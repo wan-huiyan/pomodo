@@ -1,4 +1,43 @@
-# Pomodo
+<p align="center">
+  <a href="docs/hero.svg"><img src="docs/hero.gif" width="880" alt="Pomodo: Pomo the pixel tomato next to a small team board, where a card gets claimed, another moves to Done, and a Board updated button drops in"/></a>
+</p>
+
+<h1 align="center">Pomodo 🍅</h1>
+<p align="center"><em>A cute progress board for teams of 2–5, read from one GitHub repo.</em></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.12-3776ab" alt="Python 3.12"/>
+  <img src="https://img.shields.io/badge/Flask-3.1-000000" alt="Flask 3.1"/>
+  <img src="https://img.shields.io/badge/sign--in-GitHub-24292f" alt="Sign in with GitHub"/>
+  <img src="https://img.shields.io/badge/tests-267_passing-4f8546" alt="267 tests passing"/>
+  <img src="https://img.shields.io/badge/style-pixel_tomato-d96a5b" alt="style: pixel tomato"/>
+</p>
+
+> **Point Pomodo at your team's GitHub repo and everyone sees, on one page, what comes first, who has what, and what got done this month: no new tool to keep up to date, because the tasks stay in GitHub issues.**
+
+<p align="center">
+  <img src="docs/screens/board.png" width="880" alt="The top of the board in dark mode: a greeting, the headline and Pomo"/>
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screens/done-calendar.png" alt="Recently done: a month calendar coloured by how much got finished each day, and today's timeline"/></td>
+    <td width="50%"><img src="docs/screens/who-has-what.png" alt="Who has what: one card per person with their open issues and It's mine! buttons"/></td>
+  </tr>
+  <tr>
+    <td><sub><b>Recently done</b>: each day coloured by how much the team finished; pick a day for its timeline. Light mode.</sub></td>
+    <td><sub><b>Who has what</b>: one card per person; "It's mine!" assigns you on GitHub. Dark mode.</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary>📱 On a phone</summary>
+<p align="center"><img src="docs/screens/phone.png" width="300" alt="The board on a phone in light mode"/></p>
+</details>
+
+<sub>All screenshots use the made-up demo team (`DEMO=1`), so you can see exactly this in one minute; see Quick start below.</sub>
+
+## What it is
 
 Pomodo is a small progress board for a team of 2 to 5 people. It reads the issues and pull requests of one GitHub repo and shows them in one page: what comes first, what got done, who has what, which pull requests are open, which issues nobody has taken, and the small admin jobs. People sign in with their GitHub account, and only the people you list can open it. Tasks stay in GitHub issues; the board never keeps tasks of its own.
 

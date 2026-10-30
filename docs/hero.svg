@@ -1,0 +1,217 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" width="880" height="320" role="img" aria-labelledby="t d">
+  <title id="t">Pomodo</title>
+  <desc id="d">Pomo the pixel tomato next to a small team board. A card is claimed with a stamp and hearts, another moves to Done and lights up a day on the calendar, then a "Board updated" button drops in.</desc>
+  <!-- One 8 s loop: every animation lasts 8 s (or 2 s / 4 s) so the GIF and the live SVG both loop cleanly. -->
+  <style>
+    text { font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .px { shape-rendering: crispEdges; }
+    .bob { animation: bob 2s ease-in-out infinite; }
+    .hop { animation: hop 8s infinite; }
+    .face-happy { animation: happy 8s steps(1, end) infinite; }
+    .face-joy { animation: joy 8s steps(1, end) infinite; }
+    .eyes { transform-box: fill-box; transform-origin: center; animation: blink 8s infinite; }
+    .shadow { transform-box: fill-box; transform-origin: center; animation: shadow 2s ease-in-out infinite; }
+    .claim { animation: claim 8s cubic-bezier(.3, .7, .2, 1) infinite; }
+    .finish { animation: finish 8s cubic-bezier(.3, .7, .2, 1) infinite; }
+    .stamp { transform-box: fill-box; transform-origin: center; animation: stamp 8s infinite; }
+    .heart { animation: heart 8s ease-out infinite; }
+    .h2 { animation-delay: .12s; } .h3 { animation-delay: .24s; }
+    .tick { transform-box: fill-box; transform-origin: center; animation: tick 8s infinite; }
+    .hot { animation: hot 8s infinite; }
+    .mine { animation: mine 8s infinite; }
+    .pill { animation: pill 8s cubic-bezier(.3, .7, .2, 1) infinite; }
+    .tw { transform-box: fill-box; transform-origin: center; animation: twinkle 2s ease-in-out infinite; }
+    .tw2 { animation-delay: -.5s; } .tw3 { animation-delay: -1s; } .tw4 { animation-delay: -1.5s; }
+
+    @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+    @keyframes shadow { 0%, 100% { transform: scaleX(1); opacity: .32; } 50% { transform: scaleX(.86); opacity: .2; } }
+    @keyframes hop {
+      0%, 20%, 25%, 46%, 51%, 100% { transform: translateY(0); }
+      22.5%, 48.5% { transform: translateY(-14px); }
+    }
+    @keyframes happy { 0% { opacity: 1; } 21% { opacity: 0; } 35% { opacity: 1; } 47% { opacity: 0; } 58% { opacity: 1; } }
+    @keyframes joy { 0% { opacity: 0; } 21% { opacity: 1; } 35% { opacity: 0; } 47% { opacity: 1; } 58% { opacity: 0; } }
+    @keyframes blink { 0%, 69%, 72%, 100% { transform: scaleY(1); } 70.5% { transform: scaleY(.15); } }
+    /* "It's mine!": the top card in Up for grabs moves to Who has what (1 s), and comes home invisibly at the end */
+    @keyframes claim {
+      0%, 12.5% { transform: translate(0, 0); opacity: 1; }
+      20%, 90% { transform: translate(116px, 84px); opacity: 1; }
+      93% { transform: translate(116px, 84px); opacity: 0; }
+      94% { transform: translate(0, 0); opacity: 0; }
+      100% { transform: translate(0, 0); opacity: 1; }
+    }
+    /* A finished card moves to Done (3 s) */
+    @keyframes finish {
+      0%, 37.5% { transform: translate(0, 0); opacity: 1; }
+      45%, 90% { transform: translate(116px, 42px); opacity: 1; }
+      93% { transform: translate(116px, 42px); opacity: 0; }
+      94% { transform: translate(0, 0); opacity: 0; }
+      100% { transform: translate(0, 0); opacity: 1; }
+    }
+    @keyframes stamp {
+      0%, 20.5% { opacity: 0; transform: rotate(-10deg) scale(1.8); }
+      23.5% { opacity: 1; transform: rotate(-10deg) scale(1); }
+      90% { opacity: 1; transform: rotate(-10deg) scale(1); }
+      93%, 100% { opacity: 0; transform: rotate(-10deg) scale(1); }
+    }
+    @keyframes heart {
+      0%, 21% { opacity: 0; transform: translateY(0); }
+      23% { opacity: 1; }
+      34%, 100% { opacity: 0; transform: translateY(-34px); }
+    }
+    @keyframes tick {
+      0%, 45.5% { opacity: 0; transform: scale(.2); }
+      48.5% { opacity: 1; transform: scale(1.2); }
+      50.5%, 90% { opacity: 1; transform: scale(1); }
+      93%, 100% { opacity: 0; transform: scale(1); }
+    }
+    @keyframes mine { 0%, 19% { opacity: 0; } 21%, 100% { opacity: 1; } }
+    @keyframes hot { 0%, 47% { opacity: 0; } 51%, 88% { opacity: 1; } 92%, 100% { opacity: 0; } }
+    @keyframes pill {
+      0%, 62.5% { opacity: 0; transform: translateY(-14px); }
+      66.5%, 87% { opacity: 1; transform: translateY(0); }
+      91%, 100% { opacity: 0; transform: translateY(-6px); }
+    }
+    @keyframes twinkle { 0%, 100% { opacity: .15; transform: scale(.6); } 50% { opacity: 1; transform: scale(1); } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } .face-joy, .pill, .stamp, .heart, .tick, .hot, .mine { opacity: 0; } }
+  </style>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#211a16"/>
+      <stop offset="1" stop-color="#14110f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#d96a5b" stop-opacity=".30"/>
+      <stop offset="1" stop-color="#d96a5b" stop-opacity="0"/>
+    </radialGradient>
+    <!-- a card: label chip, title line, assignee dot -->
+    <g id="card">
+      <rect width="88" height="34" rx="7" fill="#2a221d" stroke="#f2ebe6" stroke-opacity=".12"/>
+      <rect x="8" y="20" width="54" height="5" rx="2.5" fill="#f2ebe6" fill-opacity=".38"/>
+    </g>
+    <g id="spark" class="px">
+      <rect x="2" y="0" width="1" height="5" fill="#fde7de"/>
+      <rect x="0" y="2" width="5" height="1" fill="#fde7de"/>
+    </g>
+    <g id="heart" class="px" fill="#ec8d7e">
+      <rect x="1" y="0" width="2" height="1"/><rect x="4" y="0" width="2" height="1"/>
+      <rect x="0" y="1" width="7" height="2"/><rect x="1" y="3" width="5" height="1"/>
+      <rect x="2" y="4" width="3" height="1"/><rect x="3" y="5" width="1" height="1"/>
+    </g>
+  </defs>
+
+  <rect width="880" height="320" rx="24" fill="url(#bg)"/>
+  <ellipse cx="112" cy="160" rx="150" ry="130" fill="url(#glow)"/>
+
+  <!-- Pomo -->
+  <ellipse class="shadow" cx="112" cy="236" rx="40" ry="6" fill="#000"/>
+  <g class="bob">
+    <g class="hop">
+      <g transform="translate(48 88) scale(8)" class="px">
+        <rect x="7" y="2" width="2" height="1" fill="#6fa864"/>
+        <rect x="5" y="3" width="6" height="1" fill="#8cc07f"/>
+        <rect x="4" y="4" width="8" height="1" fill="#e57c68"/>
+        <rect x="5" y="4" width="1" height="1" fill="#8cc07f"/>
+        <rect x="7" y="4" width="2" height="1" fill="#8cc07f"/>
+        <rect x="10" y="4" width="1" height="1" fill="#8cc07f"/>
+        <rect x="3" y="5" width="10" height="1" fill="#e57c68"/>
+        <rect x="2" y="6" width="12" height="6" fill="#e57c68"/>
+        <rect x="3" y="12" width="10" height="1" fill="#e57c68"/>
+        <rect x="4" y="13" width="8" height="1" fill="#e57c68"/>
+        <rect x="3" y="6" width="1" height="2" fill="#fde7de"/>
+        <rect x="4" y="9" width="1" height="1" fill="#fbc2b4"/>
+        <rect x="11" y="9" width="1" height="1" fill="#fbc2b4"/>
+        <g class="face-happy" fill="#2a1712">
+          <g class="eyes"><rect x="5" y="7" width="1" height="2"/><rect x="10" y="7" width="1" height="2"/></g>
+          <rect x="6" y="9" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="7" y="10" width="2" height="1"/>
+        </g>
+        <g class="face-joy" fill="#2a1712" opacity="0">
+          <rect x="4" y="8" width="1" height="1"/><rect x="5" y="7" width="1" height="1"/><rect x="6" y="8" width="1" height="1"/>
+          <rect x="9" y="8" width="1" height="1"/><rect x="10" y="7" width="1" height="1"/><rect x="11" y="8" width="1" height="1"/>
+          <rect x="6" y="10" width="4" height="1"/><rect x="7" y="11" width="2" height="1" fill="#f6a593"/>
+        </g>
+      </g>
+    </g>
+  </g>
+  <g transform="translate(36 84) scale(3)"><use href="#spark" class="tw"/></g>
+  <g transform="translate(176 92) scale(2)"><use href="#spark" class="tw tw2"/></g>
+  <g transform="translate(186 214) scale(3)"><use href="#spark" class="tw tw3"/></g>
+  <g transform="translate(26 204) scale(2)"><use href="#spark" class="tw tw4"/></g>
+
+  <!-- title -->
+  <text x="212" y="146" font-size="60" font-weight="800" fill="#f2ebe6" letter-spacing="-1.5">Pomodo</text>
+  <text x="214" y="182" font-size="16" fill="#b3a79f">A cute progress board for teams</text>
+  <text x="214" y="204" font-size="16" fill="#b3a79f">of 2–5, read from one GitHub repo.</text>
+  <g transform="translate(214 226)">
+    <rect width="96" height="26" rx="13" fill="#d96a5b" fill-opacity=".16" stroke="#d96a5b" stroke-opacity=".5"/>
+    <text x="48" y="17.5" font-size="12" font-weight="700" fill="#ec8d7e" text-anchor="middle">It’s mine!</text>
+    <rect x="104" width="106" height="26" rx="13" fill="#9aaf9a" fill-opacity=".16" stroke="#a9c2a9" stroke-opacity=".45"/>
+    <text x="157" y="17.5" font-size="12" font-weight="700" fill="#a9c2a9" text-anchor="middle">done calendar</text>
+  </g>
+
+  <!-- the mini board -->
+  <rect x="488" y="36" width="360" height="248" rx="18" fill="#1e1916" stroke="#f2ebe6" stroke-opacity=".10"/>
+  <circle cx="508" cy="57" r="4" fill="#e57c68"/><circle cx="522" cy="57" r="4" fill="#d4a06a"/><circle cx="536" cy="57" r="4" fill="#8cc07f"/>
+  <text x="550" y="61" font-size="11" fill="#b3a79f">your-org/your-repo</text>
+
+  <g font-size="10" font-weight="700" fill="#b3a79f" letter-spacing=".8">
+    <rect x="504" y="76" width="104" height="194" rx="11" fill="#181412"/>
+    <rect x="620" y="76" width="104" height="194" rx="11" fill="#181412"/>
+    <rect x="736" y="76" width="104" height="194" rx="11" fill="#181412"/>
+    <text x="512" y="96">UP FOR GRABS</text>
+    <text x="628" y="96">WHO HAS WHAT</text>
+    <text x="744" y="96">DONE</text>
+  </g>
+
+  <!-- Up for grabs -->
+  <g transform="translate(512 150)"><use href="#card"/><rect x="8" y="8" width="20" height="6" rx="3" fill="#8cc07f"/></g>
+  <g transform="translate(512 192)"><use href="#card"/><rect x="8" y="8" width="26" height="6" rx="3" fill="#7ea6d8"/></g>
+  <!-- Who has what -->
+  <g transform="translate(628 150)"><use href="#card"/><rect x="8" y="8" width="22" height="6" rx="3" fill="#d4a06a"/><circle cx="74" cy="17" r="7" fill="#7ea6d8"/></g>
+  <!-- Done -->
+  <g transform="translate(744 108)"><use href="#card"/><rect x="8" y="8" width="24" height="6" rx="3" fill="#7ea6d8"/><circle cx="74" cy="17" r="7" fill="#a9c2a9"/><path d="M70.5 17 l2.5 2.5 l4.5 -5" fill="none" stroke="#14110f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <!-- a little month: the done calendar -->
+  <g transform="translate(744 198)">
+    <rect x="0" y="0" width="18" height="18" rx="4" fill="#d96a5b" fill-opacity=".18"/>
+    <rect x="23" y="0" width="18" height="18" rx="4" fill="#d96a5b" fill-opacity=".45"/>
+    <rect x="46" y="0" width="18" height="18" rx="4" fill="#d96a5b" fill-opacity=".18"/>
+    <rect x="69" y="0" width="18" height="18" rx="4" fill="#d96a5b" fill-opacity=".7"/>
+    <rect x="0" y="23" width="18" height="18" rx="4" fill="#d96a5b" fill-opacity=".45"/>
+    <rect x="23" y="23" width="18" height="18" rx="4" fill="#d96a5b" fill-opacity=".18"/>
+    <rect x="46" y="23" width="18" height="18" rx="4" fill="#d96a5b" fill-opacity=".45"/>
+    <rect x="69" y="23" width="18" height="18" rx="4" fill="#f2ebe6" fill-opacity=".06" stroke="#f2ebe6" stroke-opacity=".5" stroke-width="1.5"/>
+    <rect class="hot" x="69" y="23" width="18" height="18" rx="4" fill="#d96a5b" opacity="0"/>
+  </g>
+
+  <!-- the moving cards, drawn last so they pass over the others -->
+  <g class="finish">
+    <g transform="translate(628 108)">
+      <use href="#card"/><rect x="8" y="8" width="26" height="6" rx="3" fill="#e57c68"/><circle cx="74" cy="17" r="7" fill="#e57c68"/>
+      <g class="tick"><circle cx="74" cy="17" r="7" fill="#a9c2a9"/><path d="M70.5 17 l2.5 2.5 l4.5 -5" fill="none" stroke="#14110f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+    </g>
+  </g>
+  <g class="claim">
+    <g transform="translate(512 108)">
+      <use href="#card"/><rect x="8" y="8" width="30" height="6" rx="3" fill="#d96a5b"/>
+      <circle class="mine" cx="74" cy="17" r="7" fill="#d4a06a" opacity="0"/>
+    </g>
+  </g>
+  <g transform="translate(664 180)">
+    <g class="stamp">
+      <rect x="0" y="0" width="70" height="22" rx="4" fill="#14110f" fill-opacity=".55" stroke="#ec8d7e" stroke-width="2"/>
+      <text x="35" y="15.5" font-size="11.5" font-weight="800" fill="#ec8d7e" text-anchor="middle" letter-spacing="1">CLAIMED!</text>
+    </g>
+  </g>
+  <g transform="translate(646 176) scale(2)"><use href="#heart" class="heart"/></g>
+  <g transform="translate(632 186) scale(1.5)"><use href="#heart" class="heart h2"/></g>
+  <g transform="translate(664 168) scale(1.5)"><use href="#heart" class="heart h3"/></g>
+
+  <!-- Board updated -->
+  <g class="pill">
+    <rect x="654" y="43" width="186" height="28" rx="14" fill="#f2ebe6"/>
+    <circle cx="669" cy="57" r="4" fill="#d96a5b"/>
+    <text x="678" y="61.5" font-size="12" font-weight="700" fill="#1d1613">Board updated</text>
+    <rect x="774" y="47" width="60" height="20" rx="10" fill="#d96a5b"/>
+    <text x="804" y="61" font-size="11.5" font-weight="700" fill="#1a0f0b" text-anchor="middle">Show it</text>
+  </g>
+</svg>
