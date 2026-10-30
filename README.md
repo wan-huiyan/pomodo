@@ -39,7 +39,7 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screens/after-hours.png" alt="A day in Recently done: two rows finished after 6 pm sit on a night-sky strip with a moon, and Pomo, looking sleepy, says: 2 things finished after hours. Way past bedtime. Even Pomo has gone to bed."/></td>
+    <td width="50%"><img src="docs/screens/after-hours.png" alt="A day in Recently done: two rows finished after 6 pm sit on a night-sky strip with a moon, and Pomo, looking sleepy, says: 2 things finished after hours. Pomo is already in its pyjamas. Shoo, off to bed!"/></td>
     <td width="50%"><img src="docs/screens/weekend.png" alt="A Saturday in Recently done with a red WEEKEND?! stamp, and a worried Pomo saying: 2 things finished on a Saturday. Pomo will pretend it didn't see this."/></td>
   </tr>
   <tr>

@@ -722,12 +722,12 @@ def test_kofis_quarter_past_five_is_after_hours_on_her_own_clock():
     ("ada-demo", "19:59", "Home time was 6 pm. Pomo is tapping its watch.", "worried"),
     ("ada-demo", "20:00", "Dinner was hours ago. Pomo would like a word.", "worried"),
     ("ada-demo", "21:59", "Dinner was hours ago. Pomo would like a word.", "worried"),
-    ("ada-demo", "22:00", "Way past bedtime. Even Pomo has gone to bed.", "sleepy"),
+    ("ada-demo", "22:00", "Pomo is already in its pyjamas. Shoo, off to bed!", "sleepy"),
     ("ada-demo", "08:59", "Up before 9 am? Pomo hasn't had its coffee yet.", "worried"),
     ("ada-demo", "09:00", None, None),
     # the joke follows the finisher's own clock: 20:59 UK is 21:59 in Rome, 21:00 UK is 22:00 there
     ("kofi-demo", "20:59", "Dinner was hours ago. Pomo would like a word.", "worried"),
-    ("kofi-demo", "21:00", "Way past bedtime. Even Pomo has gone to bed.", "sleepy"),
+    ("kofi-demo", "21:00", "Pomo is already in its pyjamas. Shoo, off to bed!", "sleepy"),
     ("kofi-demo", "07:59", "Up before 9 am? Pomo hasn't had its coffee yet.", "worried"),  # 08:59 in Rome
     ("kofi-demo", "08:00", None, None),  # 09:00 in Rome
 ])

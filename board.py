@@ -372,7 +372,7 @@ def _day_says(d, rows, who, now, hidden=0, hidden_all=0):
         if latest is None:
             joke = f"Up before {hour_text(WORK_START)}? Pomo hasn't had its coffee yet."
         elif latest >= 22:
-            joke, out["mood"] = "Way past bedtime. Even Pomo has gone to bed.", "sleepy"
+            joke, out["mood"] = "Pomo is already in its pyjamas. Shoo, off to bed!", "sleepy"
         elif latest >= 20:
             joke = "Dinner was hours ago. Pomo would like a word."
         else:
