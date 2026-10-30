@@ -1,4 +1,4 @@
-{% from "_macros.html" import pomo, favicons, fonts, avatar, item, work_row, moon, sun, variants, sky_toggle, order_switch -%}
+{% from "_macros.html" import pomo, favicons, fonts, avatar, item, work_row, moon, sun, variants, sky_toggle, order_switch, scope_switch -%}
 {%- set s = board.stats -%}
 {%- set issues_url = board.repo_url ~ '/issues' -%}
 {%- set pulls_url = board.repo_url ~ '/pulls' -%}
@@ -189,11 +189,15 @@
 
       {%- set first_open = cal.months[0].cells|selectattr('state', 'equalto', 'open')|first %}
       {% if board.done_days %}
-      <div class="done-tools" hidden>
+      {#- The scope links work without JS, so this row always shows; the since line and the person chips need JS. #}
+      <div class="done-tools">
         <p class="since" data-since data-zone="{{ board.clock.zone }}" data-from="{{ cal['from'] }}" data-first="{{ first_open.num }} {{ cal.months[0].name }}" hidden></p>
-        <div class="chips who-filter" role="group" aria-label="Whose work to show" hidden>
-          <button type="button" class="chip" aria-pressed="true" data-who="">Everyone</button>
-          {% for p in board.people %}<button type="button" class="chip" aria-pressed="false" data-who="{{ p.login }}" data-name="{{ p.name }}">{{ avatar({'name': p.name, 'avatar': avatar_for(board, p.login)}, 22, decorative=true) }}{{ p.name }}</button>{% endfor %}
+        <div class="done-filters">
+          {{ scope_switch(board.done_scope, board.order) }}
+          <div class="chips who-filter" role="group" aria-label="Whose work to show" hidden>
+            <button type="button" class="chip" aria-pressed="true" data-who="">Everyone</button>
+            {% for p in board.people %}<button type="button" class="chip" aria-pressed="false" data-who="{{ p.login }}" data-name="{{ p.name }}">{{ avatar({'name': p.name, 'avatar': avatar_for(board, p.login)}, 22, decorative=true) }}{{ p.name }}</button>{% endfor %}
+          </div>
         </div>
       </div>
       {% endif %}
@@ -256,8 +260,12 @@
               {{ pomo(c.mood or 'happy', 'tl-pomo') }}
               <div>
                 <p>{{ c.empty }}</p>
-                {%- if p.is_today and not w and cal.latest_active %}
-                <p class="tl-empty-actions"><button type="button" class="btn-soft" data-go="{{ cal.latest_active.date }}">Show {{ "yesterday" if cal.latest_active.title == "Yesterday" else cal.latest_active.long }}</button> <a href="#grabs">or grab one from Up for grabs</a></p>
+                {%- set go = cal.latest_active if p.is_today and not w else none %}
+                {%- if go or c.hidden %}
+                <p class="tl-empty-actions">
+                  {%- if go %}<button type="button" class="btn-soft" data-go="{{ go.date }}">Show {{ "yesterday" if go.title == "Yesterday" else go.long }}</button> {% endif %}
+                  {%- if c.hidden %}<a href="{{ url_for('index', order='newest' if board.order == 'newest' else none, done='all') }}#done">{{ 'or show' if go else 'Show' }} everything</a>
+                  {%- else %}<a href="#grabs">or grab one from Up for grabs</a>{% endif %}</p>
                 {%- endif %}
               </div>
             </div>
@@ -360,7 +368,7 @@
       {%- for i in board.unclaimed -%}{%- for l in i.chips -%}{%- set _ = counts.update({l.name: counts.get(l.name, 0) + 1}) -%}{%- endfor -%}{%- endfor -%}
       {%- set colours = {} -%}
       {%- for i in board.unclaimed -%}{%- for l in i.chips -%}{%- set _ = colours.update({l.name: l.color}) -%}{%- endfor -%}{%- endfor -%}
-      {{ order_switch(board.order) }}
+      {{ order_switch(board.order, board.done_scope) }}
       <p class="grabs-count" aria-live="polite"><span data-shown>{{ board.unclaimed|length }}</span> open<span class="sr-only" data-order-said></span></p>
       <div class="chips" role="group" aria-label="Filter by label" hidden>
         <button type="button" class="chip" aria-pressed="true" data-filter="">All <span>{{ board.unclaimed|length }}</span></button>

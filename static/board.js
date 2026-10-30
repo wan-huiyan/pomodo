@@ -52,6 +52,14 @@
     toastTimer = setTimeout(function () { toast.hidden = true; }, bad ? 7000 : 4000);
   }
 
+  // This page's address with one query value set, or dropped when value is null, ending at #hash. The filters build
+  // it from the address now, not from their own link, so each keeps what the other switched in place.
+  function addressWith(name, value, hash) {
+    var url = new URL(location.href);
+    if (value) url.searchParams.set(name, value); else url.searchParams.delete(name);
+    return url.pathname + url.search + hash;
+  }
+
   // The GitHub read this page shows (see initLive). A change made here adopts the board's new one, so the page
   // never offers to show the reader their own click.
   var version = null, clicks = 0;
@@ -125,8 +133,8 @@
 
   /* ---------- Checked in the app: the verified label (data-label), with a comment on GitHub ---------- */
   var NOTES_MAX = 1000;  // main.NOTES_MAX
-  function initCheck() {
-    var buttons = all(".check");
+  function initCheck(root) {
+    var buttons = all(".check", root);
     if (!buttons.length || !window.fetch) return;
     var open = null;  // the notes box, one at a time: { btn, box }
 
@@ -240,25 +248,30 @@
   /* ---------- Recently done: what's new since your last visit ---------- */
   // "Last visit" is the GitHub read the page showed, not the browser clock: Cloud Run can serve a read a few minutes
   // old, and something closed after that read was never seen. A reload (or Back) in the same tab keeps the marks.
+  // Worked out once per page load: a Recently done swapped in by initScope is the same visit, with the same marks.
+  var visit = null;
   function initDone() {
     var box = doc.getElementById("done");
     var rows = all(".work-row", box || doc);
     if (!box || !rows.length) return;
     function get(store, key) { try { return window[store].getItem(key); } catch (e) { return null; } }
     function put(store, key, v) { try { window[store].setItem(key, v); return true; } catch (e) { return false; } }
-    var stamp = doc.querySelector(".fetched time");
-    var shown = stamp ? stamp.getAttribute("datetime") : "";
-    var shownMs = Date.parse(shown);
-    var nav = window.performance && performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
-    var again = nav && (nav.type === "reload" || nav.type === "back_forward");
-    var since = again ? get("sessionStorage", "pomodo:since") : null;
-    if (!since) {  // also after a reload of a first visit: compare with the read that first load saw
-      since = get("localStorage", "pomodo:seen") || "";
-      put("sessionStorage", "pomodo:since", since);
+    if (!visit) {
+      var stamp = doc.querySelector(".fetched time");
+      var shown = stamp ? stamp.getAttribute("datetime") : "";
+      var shownMs = Date.parse(shown);
+      var nav = window.performance && performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+      var again = nav && (nav.type === "reload" || nav.type === "back_forward");
+      var first = again ? get("sessionStorage", "pomodo:since") : null;
+      if (!first) {  // also after a reload of a first visit: compare with the read that first load saw
+        first = get("localStorage", "pomodo:seen") || "";
+        put("sessionStorage", "pomodo:since", first);
+      }
+      var seenMs = Date.parse(get("localStorage", "pomodo:seen") || "");
+      // An unreadable or older "seen" is replaced; a newer one (another tab saw a later read) is kept.
+      visit = { since: first, remembers: isFinite(shownMs) && (isFinite(seenMs) && seenMs >= shownMs || put("localStorage", "pomodo:seen", shown)) };
     }
-    var seenMs = Date.parse(get("localStorage", "pomodo:seen") || "");
-    // An unreadable or older "seen" is replaced; a newer one (another tab saw a later read) is kept.
-    var remembers = isFinite(shownMs) && (isFinite(seenMs) && seenMs >= shownMs || put("localStorage", "pomodo:seen", shown));
+    var since = visit.since, remembers = visit.remembers;
     var sinceMs = Date.parse(since);
     rows.forEach(function (r) {
       if (isFinite(sinceMs) && Date.parse(r.getAttribute("data-at")) > sinceMs) {
@@ -296,10 +309,9 @@
     }
     // The person chips belong to initCalendar, which says who is picked.
     box.addEventListener("pomodo:who", function (e) { who = e.detail.who; sayNew(); });
-    var tools = box.querySelector(".done-tools"), filter = box.querySelector(".who-filter");
+    var filter = box.querySelector(".who-filter");
     if (filter) filter.hidden = false;
     sayNew();
-    if (tools) tools.hidden = false;
     if (line) line.setAttribute("aria-live", "polite");  // after the first sentence, so only changes are read out
   }
 
@@ -541,9 +553,9 @@
   }
 
   /* ---------- pointer spotlight on cards ---------- */
-  function initSpotlight() {
+  function initSpotlight(root) {
     if (!fineHover) return;
-    all(".card").forEach(function (card) {
+    all(".card", root).forEach(function (card) {
       card.addEventListener("pointermove", function (e) {
         var r = card.getBoundingClientRect();
         card.style.setProperty("--mx", (e.clientX - r.left) + "px");
@@ -684,7 +696,7 @@
       e.preventDefault();
       var order = /[?&]order=newest(&|#|$)/.test(a.getAttribute("href")) ? "newest" : "updated";
       all("a", sw).forEach(function (x) { if (x === a) x.setAttribute("aria-current", "true"); else x.removeAttribute("aria-current"); });
-      history.replaceState(history.state, "", a.getAttribute("href"));
+      history.replaceState(history.state, "", addressWith("order", order === "newest" ? "newest" : null, "#grabs"));
       if (section.getAttribute("data-order") === order) return;
       var key = order === "newest" ? "data-created" : "data-updated";
       var rows = all(".rows--compact > li", section);
@@ -711,6 +723,51 @@
         gsap.fromTo(li, { y: dy, transition: "none" },
           { y: 0, duration: 0.55, ease: "power3.out", overwrite: "auto", clearProps: "transform,transition" });
       });
+    });
+  }
+
+  /* ---------- Recently done: Main work or Everything, swapped in place ---------- */
+  // A filter never reloads the page: a reload paints the top first and then jumps back, which flickers.
+  // The other scope's Recently done is fetched and swapped in. The person picked, the day open and the New marks stay.
+  function initScope() {
+    if (!window.fetch || !window.DOMParser || !window.history || !history.replaceState) return;
+    var busy = false;
+    doc.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest('#done .done-scope a, #done a[href*="done=all"]');
+      if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      if (busy || a.getAttribute("aria-current")) return;
+      var address = addressWith("done", /[?&]done=all(&|#|$)/.test(a.getAttribute("href")) ? "all" : null, "#done");
+      var old = doc.getElementById("done");
+      var picked = old.querySelector('.who-filter [aria-pressed="true"]'), who = picked ? picked.getAttribute("data-who") : "";
+      var open = old.querySelector(".tl:not([hidden])"), day = open && open.getAttribute("data-date");
+      busy = true;
+      fetch(address, { credentials: "same-origin" }).then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.text();
+      }).then(function (html) {
+        var fresh = new DOMParser().parseFromString(html, "text/html").getElementById("done");
+        if (!fresh) throw new Error("no Recently done in the reply");
+        // The section itself stays (the nav watches it), and so does Pomo with the confetti layer inside it
+        // (initMotion's tap); everything else in it is the other scope's.
+        var mine = old.querySelector(".done-pomo-wrap"), theirs = fresh.querySelector(".done-pomo-wrap");
+        if (mine && theirs) theirs.parentNode.replaceChild(mine, theirs);
+        while (old.firstChild) old.removeChild(old.firstChild);
+        while (fresh.firstChild) old.appendChild(fresh.firstChild);
+        fresh = old;
+        history.replaceState(history.state, "", address);
+        [initCheck, initDone, initCalendar, initSpotlight].forEach(function (init) {
+          try { init(fresh); } catch (err) { if (window.console) console.error(err); }
+        });
+        var chip = who && fresh.querySelector('.who-filter [data-who="' + who + '"]');
+        if (chip) chip.click();
+        var cell = day && fresh.querySelector('button.cal-day[data-date="' + day + '"]');
+        if (cell && cell.getAttribute("aria-pressed") !== "true") cell.click();
+        var now = fresh.querySelector(".done-scope [aria-current]");
+        if (now) now.focus({ preventScroll: true });
+      }).catch(function () {
+        location.href = address;  // the link's own job, if the swap can't be done
+      }).then(function () { busy = false; });
     });
   }
 
@@ -752,7 +809,7 @@
 
   function start() {
     // Each enhancement is optional (the page is complete without it), so one failing must not stop the rest.
-    [initChips, initOrder, initTake, initCheck, initDone, initCalendar, initNav, initSpotlight, initGlide, initMotion, initLive].forEach(function (init) {
+    [initChips, initOrder, initTake, initCheck, initDone, initCalendar, initNav, initSpotlight, initGlide, initMotion, initLive, initScope].forEach(function (init) {
       try { init(); } catch (e) { if (window.console) console.error(e); }
     });
   }

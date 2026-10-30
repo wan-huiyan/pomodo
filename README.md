@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/python-3.12-3776ab" alt="Python 3.12"/>
   <img src="https://img.shields.io/badge/Flask-3.1-000000" alt="Flask 3.1"/>
   <img src="https://img.shields.io/badge/sign--in-GitHub-24292f" alt="Sign in with GitHub"/>
-  <img src="https://img.shields.io/badge/tests-267_passing-4f8546" alt="267 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-281_passing-4f8546" alt="281 tests passing"/>
   <img src="https://img.shields.io/badge/style-pixel_tomato-d96a5b" alt="style: pixel tomato"/>
 </p>
 
@@ -34,6 +34,24 @@
 <summary>📱 On a phone</summary>
 <p align="center"><img src="docs/screens/phone.png" width="300" alt="The board on a phone in light mode"/></p>
 </details>
+
+### The cute bits
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screens/after-hours.png" alt="A day in Recently done: two rows finished after 6 pm sit on a night-sky strip with a moon, and Pomo, looking sleepy, says: 2 things finished after hours. Way past bedtime. Even Pomo has gone to bed."/></td>
+    <td width="50%"><img src="docs/screens/weekend.png" alt="A Saturday in Recently done with a red WEEKEND?! stamp, and a worried Pomo saying: 2 things finished on a Saturday. Pomo will pretend it didn't see this."/></td>
+  </tr>
+  <tr>
+    <td><sub><b>Working late?</b> Rows finished after hours (on each person's own clock) sit under a night sky, and Pomo has a word about it. Dark mode.</sub></td>
+    <td><sub><b>On a Saturday?!</b> Weekend days get a stamp and a worried Pomo. Light mode.</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screens/badges.png" width="640" alt="A finished pull request with two badges: a periwinkle Robot vouched badge with a little hand-drawn robot, and a green A human peeked badge with a girl in pigtails peeking over a wall"/><br/>
+  <sub><b>Robot vouched</b> means an agent saw it work in a browser; <b>A human peeked</b> means a person saw it work in the running app. Both are hand-drawn.</sub>
+</p>
 
 <sub>All screenshots use the made-up demo team (`DEMO=1`), so you can see exactly this in one minute; see Quick start below.</sub>
 
@@ -82,11 +100,14 @@ An unknown key or a bad value stops the app at start-up with a message naming th
 | `[time] work_start`, `work_end` | Working hours, whole hours from 0 to 24 (defaults 9 and 18). Work finished before `work_start` or from `work_end` on, Monday to Friday, counts as after hours. Weekends count as weekend work, never after hours. |
 | `[labels] chore` | Issues with this label go in the Chores card. Default `todo`. |
 | `[labels] tracker` | Issues with this label are checklists of other issues. Default `tracker`. |
-| `[labels] verified` | The "Checked in the app" label. Default `human-verified`. |
+| `[labels] verified` | The "A human peeked" label: a person saw it work in the running app. Default `human-verified`. |
+| `[labels] robot` | The "Robot vouched" label: an agent saw it work in a browser. Default `robot-vouched`. |
 | `[labels] priority` | Work that comes first. Default `priority`. |
 | `[labels] priority_title` | What the page calls that group. Default `Top priority`. |
 | `[labels] nice` | The "Nice to have" label. Default `nice-to-have`. |
 | `[labels] milestone` | Optional. A label whose closed/total count shows as a stat at the top. Leave `""` for none. |
+| `[done] hide_labels` | Recently done shows main work by default; "Everything" adds work with these labels, as well as chores and trackers. Default `["documentation"]`. |
+| `[done] hide_titles` | Also left out of main work: titles starting with any of these, ignoring case, such as `["Docs:"]`. Default none. |
 | `[[team]]` | One table per person, in the order of their cards. At least one; 2 to 5 works best. |
 | `[[team]] login` | **Required.** Their GitHub login. Logins ignore upper and lower case, and each may appear once. |
 | `[[team]] name` | The name shown on the board. Default: the login. |
@@ -243,7 +264,7 @@ Each open issue has an "It's mine!" button. Pressing it adds you as the issue's 
 
 ## Marking a fix as checked in the app
 
-When a person has checked a fix in the running app and seen the difference on screen, the issue gets a green "Checked in the app" badge in Recently done. Only fixes with a visible difference need it, so most closed issues never get one, and the board shows no count of the ones without it.
+When a person has checked a fix in the running app and seen the difference on screen, the issue gets a green "A human peeked" badge in Recently done, with a girl in pigtails peeking over a wall. Only fixes with a visible difference need it, so most closed issues never get one, and the board shows no count of the ones without it.
 
 The one source of truth is the `verified` label (default `human-verified`) on the GitHub issue. A merged pull request that closes no issue can carry it too; on a pull request that closes issues, tick the issues instead.
 
@@ -251,11 +272,17 @@ The one source of truth is the `verified` label (default `human-verified`) on th
 - **On GitHub**, add the label by hand and comment with who checked, where, when and what they saw. The badge appears after the board's next read of GitHub (within about `CACHE_SECONDS` while the board is open), and a "Board updated" button then offers to show it.
 - **The endpoint** is `POST /api/issues/<number>/checked` with JSON `{"checked": true, "notes": "..."}` or `{"checked": false}`, with the same checks as the assignee endpoint. Asking for the state an issue already has writes nothing. Two people ticking the same issue at the same moment, through two running copies of the app, could still post two comments.
 
+## Robot vouched
+
+An agent that checked a change in a real browser (Playwright, an in-app browser or similar) and saw it work adds the `robot` label (default `robot-vouched`) to the pull request, with a comment saying what it checked, where (local, or which version) and when. The board shows it as a periwinkle "Robot vouched" badge with a little hand-drawn robot, wherever the item appears: in Recently done next to "A human peeked", and in place of the label chip on open issues and pull requests. It is not a person's check and never replaces the `verified` label. There is no button for it on the board.
+
 ## How "Recently done" works
 
 A merged pull request is one row, with the issues it closed under it: the ones it lists as closing, and the ones it names (#N) that were closed by the person who merged it within two minutes of the merge. The board never reads which commit closed an issue.
 
 It is a month calendar and a day timeline. The calendar shows this month and last month (in the board's time zone), each day coloured by how many things were finished that day; the arrows switch month. A month where nothing could have been finished yet is left out, so a new board shows one month. Days before the oldest closed item are greyed out and days still to come are dashed; neither can be picked. Today is open when the page loads. The timeline lists the picked day's rows newest first, and a headline above says how many things the month finished and who finished them. The counts on the calendar, the day and the headline all count finished rows, not issues closed without being done. The stat at the top of the page (the last 14 days) is separate. Rows newer than your last visit are marked New (your browser remembers the time of the last read you saw). The person chips filter the calendar, the timeline and the New line together.
+
+It shows **main work** by default. "Everything" (`?done=all`) adds docs, chores and trackers: work with the chore or tracker label, a label in `[done] hide_labels`, or a title starting with one of `[done] hide_titles`. A merged pull request decides for the issues under it, and a day with only left-out work says so instead of "nothing finished". The 14-day count at the top counts everything. The switch never reloads the page (a reload paints the top first and then jumps back): it fetches the other version of Recently done and swaps it in, keeping the person, the day and the New marks, and writes the address so a reload keeps the choice. The links still work without JavaScript.
 
 **After hours** means before `work_start` or from `work_end` on a weekday, on the clock of whoever finished the row (their `zone` in `[[team]]`). A row finished on a Saturday or Sunday is weekend work, never after hours. Pomo, the board's pixel tomato (named after the tomato-shaped kitchen timer of the Pomodoro technique), opens the day with a short line: about work done after hours, early or at the weekend, an evening with nothing finished, or a day with nothing at all.
 
@@ -271,7 +298,8 @@ Names come from `[labels]` in `pomodo.toml`; these are the defaults. Every other
 | `tracker` | An open issue with it is a checklist of other issues. Its task lines (`- [ ] #12`, same repo only) become a **progress card** at the top, showing how many of the listed issues are closed; the issue itself is not shown as a task. |
 | `priority` | The issue goes in the **top card** (called `priority_title`, "Top priority" by default), comes first in each person's card, and is the first group in Up for grabs. The top of the page counts how many are closed. |
 | `nice-to-have` (`nice`) | The second group in Up for grabs, and listed after priority work in a person's card. Issues with neither label are "Not sorted yet". |
-| `human-verified` (`verified`) | The green "Checked in the app" badge in Recently done. |
+| `human-verified` (`verified`) | The green "A human peeked" badge in Recently done. |
+| `robot-vouched` (`robot`) | The periwinkle "Robot vouched" badge, on finished and open work. Never shown as a chip. |
 | `milestone` (empty by default) | If you set a label here, the top of the page shows how many of its issues are closed out of the total. Leave empty to hide it. |
 
 Chores and trackers have no priority of their own.

@@ -77,6 +77,12 @@ def test_the_demo_fills_the_calendar_and_pomos_lines(now):
     assert any(r["item"]["state_reason"] == "not_planned" and not r["done"] for r in rows)
     assert any(r["item"]["kind"] == "pr" and r["fixed"] for r in rows)  # a merged pull request carrying the issues it closed
     assert sum(1 for r in rows if r["item"]["verified"] or any(i["verified"] for i in r["fixed"])) >= 2
+    assert sum(1 for r in rows if r["item"]["robot"]) >= 3 and any(p["robot"] for p in b["open_prs"])
+    # the latest working day shows after-hours work together, with the night joke
+    latest = max((d for d in cal["days"] if d["says"][""]["late"] >= 2 and not d["is_today"]), key=lambda d: d["date"])
+    assert latest["says"][""].get("foot")
+    every = build_board(make_raw(now), now, done="all")["calendar"]
+    assert sum(m["total"] for m in every["months"]) > sum(m["total"] for m in cal["months"])  # docs are left out by default
     assert {r["who"]["login"] for r in rows if r["who"] and r["done"]} == {p.login for p in CONFIG.team}
     # every person shows up in the finished-this-fortnight headline too
     assert set(b["stats"]["finished"]["by"]) == {p.login for p in CONFIG.team}
@@ -148,14 +154,14 @@ def test_the_same_day_gives_the_same_data():
 def test_the_demo_works_for_any_team_and_any_clock():
     """One person at the far side of the world, other label names, no milestone, and a login that looks like the outsider."""
     config = Config(title="X", repo="o/r", zone="America/Los_Angeles", zone_label="LA", work_start=8, work_end=17,
-                    labels=Labels(chore="admin", tracker="list", verified="checked", priority="urgent",
+                    labels=Labels(chore="admin", tracker="list", verified="checked", robot="bot-ok", priority="urgent",
                                   priority_title="Urgent", nice="later", milestone=""),
                     team=(Person(login="Guest-Dev", name="Guest", zone="Pacific/Auckland"),))
     for now in NOWS + [datetime(2026, 10, 28, 3, 0, tzinfo=UTC)]:
         raw = make_raw(now, config)
         assert all(_at(t) <= now for t in _times(raw))
         names = {l["name"] for n in raw["issues"] + raw["pullRequests"] for l in n["labels"]["nodes"]}
-        assert names == {"bug", "enhancement", "docs", "admin", "list", "checked", "urgent", "later"}  # theirs, and no milestone
+        assert names == {"bug", "enhancement", "documentation", "admin", "list", "checked", "bot-ok", "urgent", "later"}  # theirs, and no milestone
         mine = [n for n in raw["issues"] if n["state"] == "OPEN" and [a["login"] for a in n["assignees"]["nodes"]] == ["Guest-Dev"]
                 and not {"admin", "list"} & {l["name"] for l in n["labels"]["nodes"]}]
         assert 2 <= len(mine) <= 4

@@ -11,11 +11,18 @@ work_end = 18            # ... and from this hour, Monday to Friday, on each per
 [labels]
 chore = "todo"                 # small admin jobs: the Chores card
 tracker = "tracker"            # a checklist of other issues: a progress card
-verified = "human-verified"    # "Checked in the app" badge
+verified = "human-verified"    # "A human peeked" badge: a person saw it work in the running app
+robot = "robot-vouched"        # "Robot vouched" badge: an agent saw it work in a browser
 priority = "priority"          # the top card: work that comes first
 priority_title = "Top priority"
 nice = "nice-to-have"
 milestone = ""                 # optional: a label whose closed/total shows as a stat; "" hides it
+
+[done]
+# Recently done shows main work by default; "Everything" adds what these pick out, plus the chore and tracker labels.
+# A pull request decides for the issues it closed.
+hide_labels = ["documentation"]
+hide_titles = []               # title starts, ignoring case, such as ["Docs:", "Board:"]
 
 [[team]]                       # 1 to ~5 people; order is card order
 login = "ada-demo"

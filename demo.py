@@ -16,6 +16,7 @@ OUTSIDER = "guest-dev"  # someone outside the team, who opens issues and sends p
 SEED = 7
 WEEKS = 6  # how far back the finished work reaches
 RECENT = 8  # the showcase items (after hours, weekend, verified ...) sit in the last 8 working days
+# The "naughty" items all land on the latest working day, so that day shows the after-hours rows together.
 
 # Open issues handed out in order: two to the first person, three to the second, four to the third, then 2, 3 ...
 # (key, title, label, rank). The key lets the pull requests and the tracker point at an issue.
@@ -27,7 +28,7 @@ ASSIGNED = [
     ("speed", "Speed up the first page load", "enhancement", "nice"),
     ("reply", "Email me when someone replies to my comment", "enhancement", ""),
     ("photo", "Profile photos are cropped on small screens", "bug", "priority"),
-    ("guide", "Write a short guide for new teammates", "docs", ""),
+    ("guide", "Write a short guide for new teammates", "documentation", ""),
     ("names", "Long project names run off the card", "bug", ""),
     ("filter", "Remember the last filter I used", "enhancement", ""),
     ("upload", "Uploads fail silently for files over 10 MB", "bug", ""),
@@ -81,9 +82,14 @@ FINISHED = [
       label="enhancement", recent=True),
     w("plain", "Update the dependencies to their latest versions"),
     w("plain", "Tidy up the test setup", late="early", recent=True),
-    w("plain", "Add a contributing guide", label="docs"),
+    w("plain", "Add a contributing guide", label="documentation"),
     w("plain", "Rename the Projects tab to Workspaces", verified=True, recent=True),
-    w("plain", "Fix typos in the help pages", label="docs", outsider=True),
+    w("fix", "Make the export button work on phones", "Export button does nothing on phones", label="bug",
+      naughty="night", robot=True, by=1),
+    w("plain", "Speed up the search box", label="enhancement", naughty="evening", robot=True, verified=True, by=0),
+    w("plain", "Show the right date format in exports", label="bug", naughty="day", robot=True, by=2),
+    w("plain", "Stop the weekly email going out twice", label="bug", weekend="afternoon", robot=True),
+    w("plain", "Fix typos in the help pages", label="documentation", outsider=True),
     w("plain", "Add a favicon for dark browser themes", outsider=True, recent=True),
     w("hand", "Move notification options into their own tab", label="enhancement", key="notif"),
     w("hand", "Delete the old beta banner"),
@@ -139,8 +145,8 @@ class _Demo:
         self.today = self.now.astimezone(self.zone).date()
         # The working days of the last WEEKS weeks on the board's clock, oldest first. Today is not one of them.
         self.days = [d for d in (self.today - timedelta(days=n) for n in range(WEEKS * 7, 0, -1)) if d.weekday() < 5]
-        self.colors = {"bug": "d73a4a", "enhancement": "a2eeef", "docs": "0075ca", L.priority: "d93f0b", L.nice: "0e8a16",
-                       L.chore: "fbca04", L.tracker: "5319e7", L.verified: "2da44e"}
+        self.colors = {"bug": "d73a4a", "enhancement": "a2eeef", "documentation": "0075ca", L.priority: "d93f0b", L.nice: "0e8a16",
+                       L.chore: "fbca04", L.tracker: "5319e7", L.verified: "2da44e", L.robot: "8b84d7"}
         if L.milestone:
             self.colors[L.milestone] = "1d76db"
         self.specs, self.keys = [], {}
@@ -161,10 +167,11 @@ class _Demo:
                 return t
         return self.now - timedelta(hours=2)  # not reached: some working day always fits
 
-    def weekend(self):
-        """Late morning on the latest Saturday, on the board's clock."""
+    def weekend(self, afternoon=False):
+        """Late morning (or mid-afternoon) on the latest Saturday, on the board's clock."""
         d = next(self.today - timedelta(days=n) for n in range(1, 8) if (self.today - timedelta(days=n)).weekday() == 5)
-        return datetime(d.year, d.month, d.day, 11, 20, tzinfo=self.zone).astimezone(timezone.utc)
+        hour, minute = (15, 5) if afternoon else (11, 20)
+        return datetime(d.year, d.month, d.day, hour, minute, tzinfo=self.zone).astimezone(timezone.utc)
 
     def earlier_today(self, minutes, share):
         """A moment today: `minutes` before now, but no further back than `share` of the time since midnight."""
@@ -173,6 +180,8 @@ class _Demo:
         return (self.now - back).replace(microsecond=0)
 
     def hour(self, late):
+        if late == "night" and self.end <= 22:
+            return self.rng.randint(22, 23)
         if late == "evening" and self.end < 24:
             return self.rng.randint(self.end, min(23, self.end + 3))
         if late == "early" and self.start > 0:
@@ -267,7 +276,7 @@ class _Demo:
                            "comments": [("src/datepicker.js", "<p>This skips days that are hidden. Is that on purpose?</p>")]}])
         at = self.ago(0, rng.randint(13, 22))
         self.add("pr", "Add Spanish translations for the sign-in page", self.ago(rng.randint(3, 6), 2), at, key="pr_spanish",
-                 author=self.outsider, decision="APPROVED", labels=["enhancement"], size=(rng.randint(30, 90), rng.randint(0, 8)),
+                 author=self.outsider, decision="APPROVED", labels=["enhancement", self.labels.robot], size=(rng.randint(30, 90), rng.randint(0, 8)),
                  reviews=[{"author": team[0], "state": "APPROVED", "at": at,
                            "html": "<p>Thank you, these read well to me.</p>", "comments": []}])
 
@@ -277,14 +286,17 @@ class _Demo:
         rng, team = self.rng, self.team
         work = list(FINISHED)
         rng.shuffle(work)
-        spread = [x for x in work if not x.get("recent") and not x.get("today") and not x.get("weekend")]
+        spread = [x for x in work if not (x.get("recent") or x.get("today") or x.get("weekend") or x.get("naughty"))]
         seen = recent = 0
         for k, item in enumerate(work):
-            who = team[k % len(team)]  # whose work it is
+            who = team[item.get("by", k) % len(team)]  # whose work it is
             if item.get("today"):
                 t = self.earlier_today(*item["today"])
             elif item.get("weekend"):
-                t = self.weekend()
+                t = self.weekend(afternoon=item["weekend"] == "afternoon")
+            elif item.get("naughty"):
+                naughty = item["naughty"]
+                t = self.slot(len(self.days) - 1, who, self.hour("" if naughty == "day" else naughty), rng.randint(0, 59))
             else:
                 if item.get("recent"):
                     index, recent = len(self.days) - 1 - recent % RECENT, recent + 1
@@ -296,7 +308,7 @@ class _Demo:
     def finish(self, item, k, who, t):
         rng, team, L = self.rng, self.team, self.labels
         kind, label = item["kind"], item["label"]
-        verified = [L.verified] if item.get("verified") else []
+        verified = ([L.verified] if item.get("verified") else []) + ([L.robot] if item.get("robot") else [])
         if kind == "hand":
             self.add("issue", item["title"], t - timedelta(days=rng.randint(2, 14), hours=rng.randint(0, 6)), t,
                      key=item.get("key"), author=self.pick(*team), state="CLOSED", closed=t, closer=who,

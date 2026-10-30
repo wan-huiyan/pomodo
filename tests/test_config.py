@@ -48,8 +48,9 @@ def test_the_example_file_is_the_plans_shape_with_a_fictional_team():
         "Pomodo", "your-org/your-repo", "Europe/London", "UK", 9, 18)
     assert [(p.login, p.name, p.zone) for p in c.team] == [
         ("ada-demo", "Ada", "Europe/London"), ("kofi-demo", "Kofi", "Africa/Accra"), ("mei-demo", "Mei", "Asia/Singapore")]
-    assert c.labels == config.Labels(chore="todo", tracker="tracker", verified="human-verified", priority="priority",
-                                     priority_title="Top priority", nice="nice-to-have", milestone="")
+    assert c.labels == config.Labels(chore="todo", tracker="tracker", verified="human-verified", robot="robot-vouched",
+                                     priority="priority", priority_title="Top priority", nice="nice-to-have", milestone="")
+    assert (c.hide_labels, c.hide_titles) == (("documentation",), ())
 
 
 def test_left_out_keys_take_their_defaults(tmp_path):
@@ -57,6 +58,7 @@ def test_left_out_keys_take_their_defaults(tmp_path):
     assert (c.title, c.zone, c.zone_label, c.work_start, c.work_end) == ("Pomodo", "UTC", "UTC", 9, 18)
     assert c.team == (config.Person(login="ada-demo", name="ada-demo", zone="UTC"),)  # name: the login; zone: the board's
     assert (c.labels.priority, c.labels.priority_title, c.labels.milestone) == ("priority", "Top priority", "")
+    assert (c.labels.robot, c.hide_labels, c.hide_titles) == ("robot-vouched", ("documentation",), ())
 
 
 def test_a_missing_file_falls_back_to_the_example_with_a_warning(tmp_path, caplog):
@@ -91,6 +93,9 @@ def test_the_path_comes_from_pomodo_config(tmp_path, monkeypatch):
     (("work_end = 18", "work_end = 18\nwork_ned = 17"), "unknown key time.work_ned"),
     (('name = "Kofi"', 'name = "Kofi"\nemail = "k@example.com"'), "unknown key team[1].email"),
     (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[labels]\npriority = ""'), "labels.priority"),
+    (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[done]\nhide_labels = "documentation"'), "done.hide_labels"),
+    (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[done]\nhide_titles = ["Docs:", " "]'), "done.hide_titles"),
+    (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[done]\nhide = []'), "unknown key done.hide"),
 ])
 def test_a_bad_value_is_refused_by_name(tmp_path, change, key):
     old, new = change
@@ -141,3 +146,10 @@ def test_a_deployed_board_will_not_fall_back_to_the_example_team(tmp_path, monke
         config.load(tmp_path / "missing.toml")
     monkeypatch.setenv("DEMO", "1")  # a demo container may still show the made-up team
     assert config.load(tmp_path / "missing.toml").team[0].login == "ada-demo"
+
+
+def test_recently_done_hides_what_the_settings_name(tmp_path):
+    c = _load(tmp_path, GOOD.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\n[done]\nhide_labels = []\n'
+                                     'hide_titles = [" Board: "]', 1))
+    assert (c.hide_labels, c.hide_titles) == ((), ("Board:",))
+    assert board.MINOR_LABELS == {"documentation", "todo", "tracker"}  # the test settings: the default plus chores, trackers

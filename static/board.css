@@ -28,6 +28,9 @@
   --btn-fg: #fff8f3;
   --sage-ink: #46664a;
   --sage-soft: rgba(122, 150, 122, .22);
+  --robot-ink: #4b4688;         /* Robot vouched: periwinkle, apart from the sage of a person's check */
+  --robot-soft: rgba(118, 110, 196, .16);
+  --robot-cheek: #f08d78;
   --new-tint: rgba(217, 106, 91, .08);  /* behind a New row in Recently done */
   --accent-ink-band: #983f33;           /* links on --bg-band under --new-tint: 4.8:1 (the usual ink is 4.1) */
   --track: rgba(43, 32, 27, .09);
@@ -76,6 +79,8 @@
     --btn-fg: #1a0f0b;
     --sage-ink: #a9c2a9;
     --sage-soft: rgba(154, 175, 154, .16);
+    --robot-ink: #c4beef;
+    --robot-soft: rgba(150, 140, 225, .17);
     --new-tint: rgba(217, 106, 91, .16);
     --accent-ink-band: #ec8d7e;
     --track: rgba(242, 235, 230, .10);
@@ -119,6 +124,8 @@
   --btn-fg: #1a0f0b;
   --sage-ink: #a9c2a9;
   --sage-soft: rgba(154, 175, 154, .16);
+  --robot-ink: #c4beef;
+  --robot-soft: rgba(150, 140, 225, .17);
   --new-tint: rgba(217, 106, 91, .16);
   --accent-ink-band: #ec8d7e;
   --track: rgba(242, 235, 230, .10);
@@ -653,6 +660,15 @@ a.card:hover, .person:hover { transform: translateY(-4px); box-shadow: var(--sha
   background: var(--sage-soft); color: var(--sage-ink); border-color: transparent;
 }
 .tag--checked svg { width: 14px; height: 14px; flex: none; }
+.tag--robot {
+  display: inline-flex; align-items: center; gap: 4px; vertical-align: 1px; margin-left: 4px; white-space: nowrap;
+  background: var(--robot-soft); color: var(--robot-ink); border-color: transparent;
+}
+.tag--robot .robot { width: 16px; height: 16px; flex: none; margin: -2px 0 -1px -2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .tag--robot:hover .robot { animation: robot-wave .6s ease-in-out; }
+}
+@keyframes robot-wave { 30% { transform: rotate(-10deg); } 70% { transform: rotate(8deg); } }
 /* Checked in the app, as a button for a signed-in person: off is a dashed invitation, on looks like the badge. */
 .check {
   display: inline-flex; align-items: center; gap: 4px; vertical-align: 1px; margin-left: 4px; white-space: nowrap;
@@ -667,6 +683,7 @@ a.card:hover, .person:hover { transform: translateY(-4px); box-shadow: var(--sha
 .check[data-on="true"] .check-off, .check[data-on="false"] .check-on { display: none; }
 .check-on { display: inline-flex; align-items: center; gap: 4px; }
 .check svg { width: 14px; height: 14px; flex: none; }
+.tag--checked .peek, .check .peek { width: 18px; height: 18px; margin: -3px 0 -2px -3px; }
 .check:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .check.is-busy { opacity: .5; cursor: progress; }
 @media (pointer: coarse) { .check { min-height: 32px; padding-inline: 10px; } }
@@ -867,9 +884,10 @@ details[open] > summary .more-word::after { content: ""; }
 
 
 .done { --accent-ink: var(--accent-ink-band); }
-.done-tools[hidden] { display: none; }
 .done-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin: clamp(28px, 4vw, 44px) 0 8px; }
 .done-tools .chips { margin-top: 0; }
+.done-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-left: auto; }
+.done-filters .order-switch { margin-top: 0; }
 .since { margin: 0; font-weight: 700; font-size: 15px; }
 .since[hidden], .who-empty[hidden], .new-badge[hidden] { display: none; }
 .since b { color: var(--accent-ink); font-variant-numeric: tabular-nums; }

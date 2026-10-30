@@ -883,3 +883,77 @@ def test_people_match_their_github_login_whatever_its_case():
     assert [i["number"] for i in b["unclaimed"]] == [4]  # not on the team, so not taken
     ada = next(i for i in b["people"][0]["items"])["assignees"][0]
     assert ada == {"login": "ada-demo", "name": "Ada", "avatar": ""}
+
+
+def _merged_as(number, closed, who="ada-demo", labels=(), title=None):
+    node = _merged(number, closed, who)
+    node["labels"] = {"nodes": [{"name": l, "color": "888888"} for l in labels]}
+    if title:
+        node["title"] = title
+    return node
+
+
+def test_main_work_leaves_out_docs_chores_trackers_and_titles_the_settings_name(monkeypatch):
+    def item(**kw):
+        return board._item(_merged_as(1, "2026-10-27T10:00:00Z", **kw), "pr", NOW)
+    assert board.is_main_work(item(labels=["bug"])) and board.is_main_work(item(labels=["infra"]))
+    for labels in (["documentation"], ["todo"], ["todo", "bug"], ["tracker"]):
+        assert not board.is_main_work(item(labels=labels)), labels
+    assert board.is_main_work(item(labels=["bug"], title="Board: a calendar"))  # no title starts set
+    monkeypatch.setattr(board, "MINOR_TITLES", ("board:", "docs:"))
+    assert not board.is_main_work(item(labels=["bug"], title="Board: a calendar"))
+    assert not board.is_main_work(item(title="  DOCS: setup"))  # ignoring case and leading spaces
+    assert board.is_main_work(item(title="Fix the board: a calendar"))  # a start, not anywhere in the title
+
+
+def _scoped(prs, done="main", now=NOW):
+    return board.build_board({"issues": [], "pullRequests": list(prs)}, now, done=done)
+
+
+def test_recently_done_shows_main_work_by_default_and_everything_on_request():
+    prs = [_merged_as(1, "2026-10-27T10:00:00Z", labels=["bug"]),
+           _merged_as(2, "2026-10-27T11:00:00Z", labels=["documentation"]),
+           _merged_as(3, "2026-10-26T10:00:00Z", labels=["todo"])]  # the oldest close: the first day either way
+    main, every = _scoped(prs), _scoped(prs, done="all")
+    assert main["done_scope"] == "main" and every["done_scope"] == "all"
+    assert [r["item"]["number"] for r in _panel(main["calendar"], "2026-10-27")["rows"]] == [1]
+    assert [r["item"]["number"] for r in _panel(every["calendar"], "2026-10-27")["rows"]] == [2, 1]
+    assert main["calendar"]["months"][-1]["total"] == 1 and every["calendar"]["months"][-1]["total"] == 3
+    cells = {c["date"]: c["state"] for c in main["calendar"]["months"][-1]["cells"]}
+    assert cells["2026-10-25"] == "before" and cells["2026-10-26"] == "open"  # the board still starts on the 26th
+    assert main["stats"]["merged_prs"] == 3  # the hero stat counts everything, as before
+    assert _scoped(prs, done="nonsense")["done_scope"] == "main"
+
+
+def test_a_day_with_only_hidden_work_says_so_instead_of_nothing_finished():
+    prs = [_merged_as(1, "2026-10-26T10:00:00Z", labels=["bug"]),
+           _merged_as(2, "2026-10-27T10:00:00Z", "kofi-demo", labels=["documentation"])]
+    says = _panel(_scoped(prs)["calendar"], "2026-10-27")["says"]
+    assert says[""]["empty"] == "Only docs and chores on this day."
+    assert says["kofi-demo"]["empty"] == "Only docs and chores by Kofi on this day."
+    assert says["ada-demo"]["empty"] == "Nothing by Ada on this day."
+    assert says[""]["label"].endswith(": only docs and chores")
+    today = _scoped(prs + [_merged_as(3, "2026-10-28T09:00:00Z", labels=["todo"])])["calendar"]
+    assert _panel(today, "2026-10-28")["says"][""]["empty"] == "Only docs and chores so far today."
+
+
+def test_show_yesterday_skips_a_day_with_only_hidden_work():
+    prs = [_merged_as(1, "2026-10-26T10:00:00Z", labels=["bug"]),
+           _merged_as(2, "2026-10-27T10:00:00Z", labels=["documentation"])]
+    assert _scoped(prs)["calendar"]["latest_active"]["date"] == "2026-10-26"
+    assert _scoped(prs, done="all")["calendar"]["latest_active"]["date"] == "2026-10-27"
+
+
+def test_a_main_pr_decides_for_the_docs_issue_it_closed():
+    issue = _node(5, state="CLOSED", closed="2026-10-27T10:00:00Z", labels=["documentation"])
+    issue["stateReason"] = "COMPLETED"
+    pr = _node(6, kind="pr", state="MERGED", closed="2026-10-27T10:00:00Z", closes=(5,), labels=["bug"])
+    cal = board.build_board({"issues": [issue], "pullRequests": [pr]}, NOW)["calendar"]
+    rows = _panel(cal, "2026-10-27")["rows"]
+    assert [r["item"]["number"] for r in rows] == [6] and [f["number"] for f in rows[0]["fixed"]] == [5]
+
+
+def test_robot_vouched_is_a_badge_not_a_label_chip():
+    i = board._item(_node(5, kind="pr", state="MERGED", closed="2026-10-27T10:00:00Z", labels=["robot-vouched", "bug"]), "pr", NOW)
+    assert i["robot"] is True and [c["name"] for c in i["chips"]] == ["bug"]
+    assert board._item(_node(6, labels=["bug"]), "issue", NOW)["robot"] is False

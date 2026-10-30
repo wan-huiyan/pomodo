@@ -121,10 +121,10 @@ def _version_now():
     return cache.read(fingerprint)
 
 
-def current_board(viewer=None, order="updated"):
+def current_board(viewer=None, order="updated", done="main"):
     raw, fetched_at, error = cache.get()
     now = datetime.now(timezone.utc)
-    board = build_board(raw, now, order=order)
+    board = build_board(raw, now, order=order, done=done)
     board.update(repo=REPO, repo_url=f"https://github.com/{REPO}", error=error,
                  version=fingerprint(raw),  # the read this page is drawn from
                  viewer=None,
@@ -169,7 +169,7 @@ def security_headers(resp):
 @app.get("/")
 def index():
     try:
-        board = current_board(g.login, order=request.args.get("order", "updated"))
+        board = current_board(g.login, order=request.args.get("order", "updated"), done=request.args.get("done", "main"))
     except GitHubError as e:
         return render_template("error.html", message=str(e), repo=REPO), 503
     return render_template("board.html", board=board)
@@ -190,7 +190,7 @@ def version():
 @app.get("/api/board.json")
 def board_json():
     try:
-        return jsonify(current_board(order=request.args.get("order", "updated")))
+        return jsonify(current_board(order=request.args.get("order", "updated"), done=request.args.get("done", "main")))
     except GitHubError as e:
         return jsonify(error=str(e)), 503
 

@@ -121,6 +121,8 @@ def test_checked_in_the_app_shows_on_what_is_labelled_human_verified(client):
     assert '#120</a> Item 120 <span class="tag tag--checked"' in html
     assert '#39</span> Item 39</a> <span class="tag tag--checked"' in html
     assert ">human-verified<" not in html  # the badge, never a raw label chip
+    badge = html.split('class="tag tag--checked"', 1)[1].split("</span>", 1)[0]
+    assert '<svg class="peek"' in badge and badge.endswith("A human peeked")  # the girl with two pigtails peeking over a wall
     js = (__import__("pathlib").Path(main.__file__).parent / "static" / "board.js").read_text()
     assert "human-verified" not in js and js.count('btn.getAttribute("data-label")') == 2  # the label's name comes from the page
 
@@ -175,7 +177,8 @@ def test_the_order_switch_is_only_in_up_for_grabs_and_each_row_carries_both_date
     new = c.get("/?order=newest").get_data(as_text=True)
     for html, current, order in ((usual, "Recently updated", "updated"), (new, "Recently opened", "newest")):
         assert html.count('<div class="order-switch" role="group"') == 1
-        assert re.search(rf' aria-current="true"[^>]*>{current}</a>', html) and html.count('aria-current="true"') == 1
+        assert re.search(rf' aria-current="true"[^>]*>{current}</a>', html)
+        assert html.split('aria-label="Order Up for grabs"', 1)[1].split("</div>", 1)[0].count('aria-current="true"') == 1
         assert f'<section id="grabs" class="chapter wrap grabs" data-order="{order}"' in html
     assert 'href="/?order=newest#grabs"' in usual and 'href="/#grabs"' in new and "order=newest#people" not in usual
     grabs = usual.split('<section id="grabs"', 1)[1].split('<section id="chores"', 1)[0]
@@ -380,3 +383,80 @@ def test_the_milestone_stat_shows_only_when_a_label_is_set(client, monkeypatch):
     html = client(lambda: raw).get("/").get_data(as_text=True)
     assert "b-milestone" not in html and "issues labelled" not in html
     assert main.current_board()["stats"]["milestone"] is None
+
+
+def test_recently_done_shows_main_work_with_a_link_to_everything(client, monkeypatch):
+    import re
+    moment = _freeze(monkeypatch, "2026-10-30T12:00:00+00:00")
+    docs = _node(40, kind="pr", state="MERGED", closed="2026-10-29T10:00:00Z", closes=(), labels=["documentation"])
+    fix = _node(41, kind="pr", state="MERGED", closed="2026-10-29T11:00:00Z", closes=(), labels=["bug"])
+    raw = {"issues": [_node(1)], "pullRequests": [docs, fix]}
+    c = client(lambda: raw, clock=lambda: moment.timestamp())
+
+    def links(html):
+        box = html.split('class="order-switch done-scope"', 1)[1].split("</div>", 1)[0]
+        return re.findall(r'<a href="([^"]+)"( aria-current="true")?[^>]*>([^<]+)</a>', box)
+
+    def rows(html):
+        return re.findall(r'class="tl-row[^"]*"[^>]*>.*?/issues/(\d+)"', html.split('id="tl-2026-10-29"', 1)[1].split("</section>", 1)[0], re.S)
+
+    main_ = c.get("/").get_data(as_text=True)
+    assert links(main_) == [("/#done", ' aria-current="true"', "Main work"), ("/?done=all#done", "", "Everything")]
+    assert "41" in rows(main_) and "40" not in rows(main_)
+    # beside the person chips, in a row that shows without JS (only the chips and the since line wait for it)
+    tools = main_.split('<div class="done-tools">', 1)[1].split('<div class="cal-layout">', 1)[0]
+    assert tools.index('class="order-switch done-scope"') < tools.index('class="chips who-filter"')
+    every = c.get("/?done=all&order=newest").get_data(as_text=True)
+    assert links(every) == [("/?order=newest#done", "", "Main work"), ("/?order=newest&amp;done=all#done", ' aria-current="true"', "Everything")]
+    assert {"40", "41"} <= set(rows(every))
+    # the Up for grabs order links keep the scope, and the scope links keep the order
+    assert 'href="/?done=all#grabs"' in every and 'href="/?order=newest&amp;done=all#grabs"' in every
+    assert 'href="/?order=newest#grabs"' in main_
+
+
+def test_a_day_with_only_docs_work_links_to_everything(client, monkeypatch):
+    moment = _freeze(monkeypatch, "2026-10-30T12:00:00+00:00")
+    docs = _node(40, kind="pr", state="MERGED", closed="2026-10-29T10:00:00Z", closes=(), labels=["documentation"])
+    html = client(lambda: {"issues": [_node(1)], "pullRequests": [docs]}, clock=lambda: moment.timestamp()).get("/").get_data(as_text=True)
+    day = html.split('id="tl-2026-10-29"', 1)[1].split("</section>", 1)[0]
+    assert "Only docs and chores on this day." in day and 'href="/?done=all#done">Show everything</a>' in day
+
+
+def test_no_filter_reloads_the_page():
+    """A filter that loads the page again paints the top first and then jumps back: a flicker. Every link switch in
+    the templates is handled in place by its own function in board.js. A new filter fails here until it is added to
+    HANDLED, with a handler that works the same way."""
+    import pathlib
+    import re
+    root = pathlib.Path(main.__file__).parent
+    js = (root / "static" / "board.js").read_text()
+    templates = "".join(p.read_text() for p in (root / "templates").glob("*.html"))
+    HANDLED = {"order-switch": "initOrder", "order-switch done-scope": "initScope"}
+    assert set(re.findall(r'class="(order-switch[^"]*)"', templates)) == set(HANDLED)
+    start = js.split("function start", 1)[1]
+    for name in HANDLED.values():
+        body = js.split(f"function {name}(", 1)[1].split("\n  }\n", 1)[0]
+        assert "e.preventDefault()" in body and "history.replaceState" in body, name
+        assert "location.reload" not in body and ".submit(" not in body, name
+        assert f"{name}]" in start or f"{name}," in start, name
+    scope = js.split("function initScope(", 1)[1].split("\n  }\n", 1)[0]
+    # the swap keeps the person, the day and the New marks; a full load is only the fallback when the fetch fails
+    assert "who-filter" in scope and "cal-day" in scope and "initDone" in scope
+    # the section element stays, so the nav's observer and Pomo's tap (bound once at load) still work after a swap
+    assert "replaceChild(fresh, old)" not in scope and '".done-pomo-wrap"' in scope
+    assert scope.count("location.href") == 1 and "catch(function () {\n        location.href" in scope
+    assert "var visit = null" in js and "if (!visit)" in js.split("function initDone(", 1)[1]
+
+
+def test_robot_vouched_shows_a_robot_badge_where_an_agent_checked_it_in_a_browser(client):
+    ago = lambda h: (datetime.now(timezone.utc) - timedelta(hours=h)).isoformat()  # noqa: E731  # main uses the real now
+    merged = _node(181, kind="pr", state="MERGED", closed=ago(1), closes=(), labels=["robot-vouched", "human-verified"])
+    plain = _node(182, kind="pr", state="MERGED", closed=ago(1), closes=())
+    open_pr = _node(183, kind="pr", labels=["robot-vouched", "app-ux"])
+    html = client(lambda: {"issues": [_node(1)], "pullRequests": [merged, plain, open_pr]}).get("/").get_data(as_text=True)
+    assert html.count('class="tag tag--robot"') == 2  # the merged row and the open pull request, not 182
+    assert 'PR #181</span> Item 181</a> <span class="tag tag--robot"' in html  # before the person's badge
+    row = html.split('PR #181</span>', 1)[1].split("</p>", 1)[0]
+    assert row.index("tag--robot") < row.index("tag--checked") and "Robot vouched</span>" in row
+    assert '<svg class="robot"' in row  # the drawing, not an emoji
+    assert ">robot-vouched<" not in html and ">app-ux<" in html  # a badge, never a raw label chip

@@ -19,7 +19,12 @@ PRIORITY_TITLE = CONFIG.labels.priority_title
 NICE_LABEL = CONFIG.labels.nice
 TRACKER_LABEL = CONFIG.labels.tracker  # a checklist of other issues: shown as a progress card, never as a task
 VERIFIED_LABEL = CONFIG.labels.verified  # a person checked the fix in the running app: a badge in Recently done
-HIDDEN_LABELS = {MILESTONE_LABEL, PRIORITY_LABEL, NICE_LABEL} - {""}  # shown as a tag, a group or a stat, not as chips
+ROBOT_LABEL = CONFIG.labels.robot  # an agent checked the change in a browser and saw it work: a robot badge
+HIDDEN_LABELS = {MILESTONE_LABEL, PRIORITY_LABEL, NICE_LABEL, ROBOT_LABEL} - {""}  # a tag, group, stat or badge, not a chip
+# Recently done shows main work unless "Everything" is picked: not docs, chores, trackers or what the settings add.
+MINOR_LABELS = set(CONFIG.hide_labels) | {TODO_LABEL, TRACKER_LABEL}
+MINOR_TITLES = tuple(t.lower() for t in CONFIG.hide_titles)
+HIDDEN_WORK = "docs and chores"  # how a day with only left-out work names it
 GROUPS = [("priority", PRIORITY_TITLE), ("nice", "Nice to have"), (None, "Not sorted yet")]
 RECENT_DAYS = 14
 BOARD_TZ = ZoneInfo(CONFIG.zone)  # "Today" and "Yesterday" in Recently done follow the board's clock
@@ -156,6 +161,7 @@ def _item(node, kind, now):
         "tracks": tracked_numbers(node) if kind == "issue" and TRACKER_LABEL in names else None,
         # A closed issue, or a merged pull request (one that closes no issue gets its tick on its own row).
         "verified": VERIFIED_LABEL in names and (kind == "issue" or state == "merged"),
+        "robot": ROBOT_LABEL in names,
         "created_at": _when(node["createdAt"]).isoformat(),
         "created_ago": ago(_when(node["createdAt"]), now), "updated_ago": ago(updated, now),
         "updated_at": updated.isoformat(), "closed_at": closed.isoformat() if closed else None,
@@ -301,6 +307,14 @@ def _plural(n, word):
     return f"{n} {word}{'' if n == 1 else 's'}"
 
 
+def is_main_work(item):
+    """Work that Recently done shows by default: not a minor label, not a title the settings leave out. A pull request
+    decides for the issues under it."""
+    if MINOR_LABELS & {l["name"] for l in item["labels"]}:
+        return False
+    return not item["title"].strip().lower().startswith(MINOR_TITLES) if MINOR_TITLES else True
+
+
 def _clock(r):
     """A row's time on the board's clock for the timeline, and the finisher's own time for "after hours"."""
     at = datetime.fromisoformat(r["item"]["closed_at"])
@@ -316,18 +330,23 @@ def _clock(r):
             "own_note": f"{own:%H:%M} {str(tz).rsplit('/', 1)[-1].replace('_', ' ')}" if away else ""}
 
 
-def _day_says(d, rows, who, now):
-    """What a day says about itself for one person (who) or everyone (""): counts, the stat line, the footer joke."""
+def _day_says(d, rows, who, now, hidden=0, hidden_all=0):
+    """What a day says about itself for one person (who) or everyone (""): counts, the stat line, the footer joke.
+    hidden counts that person's finished work the view leaves out (docs, chores), so an empty day says so;
+    hidden_all counts everyone's."""
     today = now.astimezone(BOARD_TZ)
     mine = [r for r in rows if not who or r["clock"]["login"] == who]
     done = [r for r in mine if r["done"]]
     weekend = d.weekday() >= 5
     late = [r for r in done if r["clock"]["kind"] in ("early", "late")]  # a weekend row is never after hours
     n = len(done)
-    out = {"who": who, "n": n, "late": 0 if weekend else len(late), "has_rows": bool(mine),
+    out = {"who": who, "n": n, "late": 0 if weekend else len(late), "has_rows": bool(mine), "hidden": hidden,
            "level": next(k for k, (lo, hi) in enumerate(HEAT_LEVELS) if lo <= n <= hi)}
     if not mine:
-        if who and rows:
+        if hidden:
+            by = f" by {PEOPLE[who]}" if who else ""
+            out["empty"] = f"Only {HIDDEN_WORK}{by} " + ("so far today." if d == today.date() else "on this day.")
+        elif who and (rows or hidden_all):
             out["empty"] = f"Nothing by {PEOPLE[who]} on this day."
         elif d == today.date():
             out["empty"] = "Nothing finished yet today."
@@ -370,7 +389,8 @@ def _says_label(d, today, says):
     long = f"{d:%A} {d.day} {d:%B}"
     out = {}
     for who, s in says.items():
-        text = f"{long}{', today' if d == today else ''}: " + (f"{s['n']} finished" if s["n"] else "nothing finished")
+        text = f"{long}{', today' if d == today else ''}: " + (f"{s['n']} finished" if s["n"] else
+                                                               f"only {HIDDEN_WORK}" if s["hidden"] else "nothing finished")
         if not who and s["n"]:
             split = [f"{says[p]['n']} by {PEOPLE[p]}" for p in PEOPLE if says[p]["n"]]
             others = s["n"] - sum(says[p]["n"] for p in PEOPLE)
@@ -384,18 +404,20 @@ def _says_label(d, today, says):
     return out
 
 
-def done_calendar(done_days, now, first_day):
+def done_calendar(done_days, now, first_day, hidden_days=()):
     """Recently done as a month calendar plus one timeline per day, from the days recently_done returned (newest first).
 
     The window is this month and last month on the board's clock; a month with no clickable day is left out. A day is "before"
     until first_day (the oldest day anything was closed), "future" after today, else "open". Counts are done rows:
-    the calendar, the day panels and the month headline all count the same thing.
+    the calendar, the day panels and the month headline all count the same thing. hidden_days holds the finished rows
+    the view leaves out, by day, so a day with only those says so instead of "nothing finished".
     """
     now_here = now.astimezone(BOARD_TZ)
     today = now_here.date()
     this_month = today.replace(day=1)
     last_month = (this_month - timedelta(days=1)).replace(day=1)
     by_date = {d["date"]: d for d in done_days}
+    hidden_by = {d["date"]: [_clock(r)["login"] for r in d["rows"] if r["done"]] for d in hidden_days}
     who_all = [""] + list(PEOPLE)  # "" is everyone
     months, panels = [], []
     for first in (last_month, this_month):
@@ -405,7 +427,9 @@ def done_calendar(done_days, now, first_day):
             # Newest first, as recently_done made them. Copies, so the board's own rows stay as they were.
             rows = [{**r, "clock": _clock(r)} for r in by_date.get(d.isoformat(), {}).get("rows", [])]
             state = "before" if d < first_day else "future" if d > today else "open"
-            says = {w: _day_says(d, rows, w, now) for w in who_all}
+            left_out = hidden_by.get(d.isoformat(), [])
+            says = {w: _day_says(d, rows, w, now, sum(1 for login in left_out if not w or login == w), len(left_out))
+                    for w in who_all}
             for who, label in _says_label(d, today, says).items():
                 says[who]["label"] = label
             cells.append({"date": d.isoformat(), "num": k, "state": state, "today": d == today,
@@ -440,8 +464,9 @@ def done_calendar(done_days, now, first_day):
             "months": months, "days": panels}
 
 
-def build_board(raw, now, order="updated"):
-    """order "newest" lists Up for grabs by the date each issue was opened, newest first. Every other list keeps
+def build_board(raw, now, order="updated", done="main"):
+    """done "all" shows every finished row in Recently done; any other value shows main work only (is_main_work).
+    order "newest" lists Up for grabs by the date each issue was opened, newest first. Every other list keeps
     its own order: last update, priority first in a person's card, by number in the priority card and chores.
     Ties go to the higher number, as when board.js re-sorts Up for grabs in the browser."""
     newest = order == "newest"
@@ -480,6 +505,12 @@ def build_board(raw, now, order="updated"):
     # recently_done compares closed_at as text, so the window start must be UTC isoformat like the stored values.
     window = datetime.combine(last_month, time(0), BOARD_TZ).astimezone(timezone.utc).isoformat()
     done_days, _ = recently_done(items, window, now)
+    scope = "all" if done == "all" else "main"
+    shown_days, hidden_days = done_days, []
+    if scope == "main":
+        split = [(d, [r for r in d["rows"] if is_main_work(r["item"])]) for d in done_days]
+        shown_days = [{**d, "rows": rows} for d, rows in split if rows]
+        hidden_days = [{**d, "rows": [r for r in d["rows"] if not is_main_work(r["item"])]} for d, _ in split]
     first_day = min([today] + [datetime.fromisoformat(i["closed_at"]).astimezone(BOARD_TZ).date()
                                for i in items if i["state"] != "open" and i["closed_at"]])
     done_recent = sorted((i for i in items if i["state"] != "open" and i["closed_at"] and i["closed_at"] >= cutoff),
@@ -498,7 +529,8 @@ def build_board(raw, now, order="updated"):
                              for k, t in GROUPS],
         "done_recent": done_recent,
         "done_days": done_days,
-        "calendar": done_calendar(done_days, now, first_day),
+        "done_scope": scope,
+        "calendar": done_calendar(shown_days, now, first_day, hidden_days),
         "stats": {
             "open_issues": sum(1 for i in open_items if i["kind"] == "issue"),
             "open_prs": sum(1 for i in open_items if i["kind"] == "pr"),

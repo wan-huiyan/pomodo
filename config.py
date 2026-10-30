@@ -18,8 +18,11 @@ _LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 # The keys each table may hold, with the default for the ones that can be left out (None: required).
 _TOP = {"title": "Pomodo", "repo": None}
 _TIME = {"zone": "UTC", "zone_label": None, "work_start": 9, "work_end": 18}  # zone_label defaults to the zone
-_LABELS = {"chore": "todo", "tracker": "tracker", "verified": "human-verified", "priority": "priority",
-           "priority_title": "Top priority", "nice": "nice-to-have", "milestone": ""}
+_LABELS = {"chore": "todo", "tracker": "tracker", "verified": "human-verified", "robot": "robot-vouched",
+           "priority": "priority", "priority_title": "Top priority", "nice": "nice-to-have", "milestone": ""}
+# Recently done shows main work unless "Everything" is picked: these labels and title starts are left out, as are the
+# chore and tracker labels.
+_DONE = {"hide_labels": ["documentation"], "hide_titles": []}
 _PERSON = {"login": None, "name": None, "zone": None, "id": None}  # name defaults to the login, zone to the board's
 
 
@@ -39,7 +42,8 @@ class Person:
 class Labels:
     chore: str           # small admin jobs: the Chores card
     tracker: str         # a checklist of other issues: a progress card
-    verified: str        # "Checked in the app"
+    verified: str        # "A human peeked": a person saw it work in the running app
+    robot: str           # "Robot vouched": an agent saw it work in a browser
     priority: str        # the top card and the first group in Up for grabs
     priority_title: str  # what the page calls that group
     nice: str
@@ -56,6 +60,8 @@ class Config:
     work_end: int        # ... and from this one, on each person's own clock
     labels: Labels
     team: tuple          # of Person, in card order
+    hide_labels: tuple = ()  # Recently done leaves these out until "Everything" is picked ...
+    hide_titles: tuple = ()  # ... and titles starting with these (ignoring case)
 
 
 def _table(data, allowed, where):
@@ -78,6 +84,13 @@ def _text(data, key, default, where, blank=False):
     return value.strip()
 
 
+def _texts(data, key, default, where):
+    value = data.get(key, default)
+    if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
+        raise ConfigError(f"{where} must be a list of non-empty strings, such as [\"documentation\"]")
+    return tuple(v.strip() for v in value)
+
+
 def _zone(value, where):
     if not isinstance(value, str) or not value:
         raise ConfigError(f"{where} must be a time zone name such as \"Europe/London\"")
@@ -97,7 +110,7 @@ def _hour(data, key, default, where):
 
 def parse(data):
     """A Config from pomodo.toml's contents (a dict, as tomllib reads it). Raises ConfigError naming the bad key."""
-    _table(data, [*_TOP, "time", "labels", "team"], "")
+    _table(data, [*_TOP, "time", "labels", "done", "team"], "")
     title = _text(data, "title", _TOP["title"], "title")
     repo = _text(data, "repo", None, "repo")
     if not _REPO.match(repo) or repo.split("/")[1] in (".", ".."):
@@ -113,6 +126,9 @@ def parse(data):
 
     raw = _table(data.get("labels", {}), _LABELS, "labels")
     labels = Labels(**{k: _text(raw, k, d, f"labels.{k}", blank=k == "milestone") for k, d in _LABELS.items()})
+    done = _table(data.get("done", {}), _DONE, "done")
+    hide_labels = _texts(done, "hide_labels", _DONE["hide_labels"], "done.hide_labels")
+    hide_titles = _texts(done, "hide_titles", _DONE["hide_titles"], "done.hide_titles")
 
     people = data.get("team")
     if not isinstance(people, list) or not people:
@@ -134,7 +150,7 @@ def parse(data):
         team.append(Person(login=login, name=_text(p, "name", login, f"{where}.name"),
                            zone=_zone(p.get("zone", zone), f"{where}.zone"), id=gid))
     return Config(title=title, repo=repo, zone=zone, zone_label=zone_label, work_start=start, work_end=end,
-                  labels=labels, team=tuple(team))
+                  labels=labels, team=tuple(team), hide_labels=hide_labels, hide_titles=hide_titles)
 
 
 def load(path=None):
