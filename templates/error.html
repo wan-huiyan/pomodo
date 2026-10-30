@@ -1,0 +1,29 @@
+{% from "_macros.html" import pomo, favicons, fonts -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<title>Board unavailable · {{ settings.title }}</title>
+{{ favicons() }}
+{{ fonts() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='board.css') }}">
+</head>
+<body class="error-page">
+<div class="atmos" aria-hidden="true"><div class="mesh"></div></div>
+<main class="error-main wrap">
+  <div class="card error-card">
+    {{ pomo('worried', 'error-pomo') }}
+    <h1 class="error-title">The board could not load.</h1>
+    <p class="error-lede">GitHub could not be read, and there is no earlier copy to show yet.</p>
+    <p class="error-msg"><span class="muted">What went wrong:</span> <code>{{ message }}</code></p>
+    <div class="hero-ctas">
+      <a class="btn btn--solid" href="{{ url_for('index') }}">Try again</a>
+      <a class="btn btn--ghost" href="https://github.com/{{ repo }}" target="_blank" rel="noopener noreferrer">Open {{ repo }} on GitHub</a>
+    </div>
+  </div>
+</main>
+</body>
+</html>

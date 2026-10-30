@@ -1,0 +1,99 @@
+/* sparkle.css — the board's playful layer. Starts from sparkle-that-page's cute_chrome.css
+ * (wan-huiyan/cutify-this), recoloured to the board's own tokens, plus what Pomodo adds:
+ * the wand cursor, Pomo climbing the scroll rail and bouncy photos.
+ * Always on; motion waits for prefers-reduced-motion: no-preference. */
+
+:root {
+  --spring: cubic-bezier(.34, 1.56, .64, 1);
+  --heart-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges' fill='%23d0604d'%3E%3Cpath d='M1 0h2v1H1zM4 0h2v1H4zM0 1h7v2H0zM1 3h5v1H1zM2 4h3v1H2zM3 5h1v1H3z'/%3E%3C/svg%3E");
+  --heart-b: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges' fill='%23f6a593'%3E%3Cpath d='M1 0h2v1H1zM4 0h2v1H4zM0 1h7v2H0zM1 3h5v1H1zM2 4h3v1H2zM3 5h1v1H3z'/%3E%3C/svg%3E");
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --spring: linear(0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017, 1.077, 1.121,
+      1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%,
+      0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1);
+  }
+}
+
+/* ---------- chrome: selection and scrollbar in the board's terracotta ---------- */
+::selection { background: color-mix(in srgb, var(--accent) 32%, var(--bg)); color: var(--text); }
+html { scrollbar-color: color-mix(in srgb, var(--accent) 55%, var(--bg)) var(--bg); }
+
+/* ---------- the wand (fairy_cursor.js sets the two images; mouse and trackpad only) ---------- */
+html.stp-wand { cursor: var(--stp-wand); }
+html.stp-wand :is(a, button, summary, label, [role="button"], .chip, .take, [data-burst]) { cursor: var(--stp-wand-link); }
+html.stp-wand :is(.prose, input, textarea) { cursor: auto; } /* issue text: keep the text cursor for selecting */
+html.stp-wand .is-busy { cursor: progress; }
+
+/* ---------- Pomo climbs the right edge as you scroll (scroll_indicator.js), cheers at the bottom ---------- */
+.stp-mascot { position: fixed; top: 16px; right: 10px; z-index: 40; width: 26px; pointer-events: none; }
+.stp-mascot[hidden] { display: none; }
+.stp-mascot .pomo { width: 100%; }
+.stp-mascot .pomo--joy, .stp-mascot.is-end .pomo--happy { display: none; }
+.stp-mascot.is-end .pomo--joy { display: block; }
+@media (max-width: 999px) { .stp-mascot { display: none; } } /* no margin to climb in */
+
+@media (prefers-reduced-motion: no-preference) {
+  @media (hover: hover) {
+    /* a wobble on the show-all button (not It's mine! or the filters: people pass over dozens of those) */
+    .show-all > summary:hover { animation: stp-wobble .5s ease-in-out; }
+    /* the Recently done photo hops when you point at its row; transitions, so leaving mid-hop is smooth */
+    .work-meta .av, .chip .av { transition: transform .5s var(--spring); }
+    .work-row:hover .work-meta .av { transform: translateY(-2px) rotate(-6deg) scale(1.06); }
+    .chip:hover .av { transform: rotate(-10deg) scale(1.12); }
+  }
+  /* photos: a squash-and-stretch boing on hover and click (magic.js adds .is-boing and lets it finish) */
+  .is-boing > .av, .is-boing.av { animation: stp-boing .7s ease-in-out; }
+  /* Claiming an issue (magic.js): the button squashes, your photo stamps in, hearts fly, Claimed! lands on the row */
+  .take.is-claimed { animation: claim-squash .65s var(--spring); }
+  .take .av.is-pop { animation: claim-photo .6s var(--spring); }
+  .claim-heart {
+    position: fixed; z-index: 60; width: 14px; height: 12px; margin: -6px 0 0 -7px; pointer-events: none;
+    background: var(--heart-a) center / contain no-repeat;
+    animation: claim-heart .95s cubic-bezier(.2, .7, .3, 1) both;
+  }
+  .claim-heart--pink { background-image: var(--heart-b); }
+  .claim-stamp {
+    position: absolute; left: 50%; top: 50%; z-index: 2; pointer-events: none;
+    padding: 4px 14px; border: 3px double var(--accent); border-radius: 10px;
+    font: 800 clamp(1.1rem, 2.2vw, 1.5rem)/1 var(--font-display); letter-spacing: .06em; text-transform: uppercase;
+    color: var(--accent); background: color-mix(in srgb, var(--surface) 82%, transparent);
+    animation: claim-stamp 1.9s cubic-bezier(.3, 1.4, .5, 1) both;
+  }
+  .item.is-thud { animation: claim-thud .45s ease-out .28s; }
+  .stp-mascot.is-end .pomo--joy { animation: stp-pop .6s var(--spring); }
+}
+@keyframes stp-wobble {
+  0%, 100% { transform: translateY(-2px) rotate(0) scale(1); }
+  25% { transform: translateY(-2px) rotate(-3deg) scale(1.04); }
+  50% { transform: translateY(-2px) rotate(2deg) scale(1.04); }
+  75% { transform: translateY(-2px) rotate(-1deg) scale(1.02); }
+}
+@keyframes stp-boing {
+  0%, 100% { transform: none; }
+  18% { transform: translateY(4%) scale(1.14, .86); }
+  42% { transform: translateY(-12%) scale(.9, 1.1) rotate(-4deg); }
+  62% { transform: translateY(0) scale(1.05, .95); }
+  80% { transform: scale(.98, 1.02); }
+}
+@keyframes stp-pop { from { transform: scale(.4); opacity: .3; } }
+@keyframes claim-squash {
+  20% { transform: scale(1.22, .78); }
+  45% { transform: scale(.86, 1.18) rotate(-6deg); }
+  70% { transform: scale(1.07, .95) rotate(3deg); }
+}
+@keyframes claim-photo { from { transform: scale(2.2) rotate(-30deg); opacity: 0; } }
+@keyframes claim-heart {
+  0% { transform: translate(0, 0) scale(.3) rotate(0); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1.15) rotate(var(--r)); opacity: 0; }
+}
+@keyframes claim-stamp {
+  0% { transform: translate(-50%, -50%) scale(2.6) rotate(-22deg); opacity: 0; }
+  16% { transform: translate(-50%, -50%) scale(.9) rotate(-8deg); opacity: 1; }
+  24% { transform: translate(-50%, -50%) scale(1.04) rotate(-8deg); }
+  30%, 78% { transform: translate(-50%, -50%) scale(1) rotate(-8deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.06) rotate(-8deg); opacity: 0; }
+}
+@keyframes claim-thud { 30% { transform: translateY(3px); } 60% { transform: translateY(-1px); } }

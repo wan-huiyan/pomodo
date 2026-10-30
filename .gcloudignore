@@ -1,0 +1,15 @@
+# What `gcloud run deploy --source .` leaves out of the upload. pomodo.toml must stay IN: the image reads your
+# team and repo from it. To see what would be uploaded: gcloud meta list-files-for-upload .
+.git/
+.gitignore
+.venv/
+dev/
+tests/
+docs/
+scripts/
+.pytest_cache/
+__pycache__/
+*.pyc
+.env
+.env.*
+.DS_Store

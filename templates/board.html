@@ -1,0 +1,437 @@
+{% from "_macros.html" import pomo, favicons, fonts, avatar, item, work_row, moon, sun, variants, sky_toggle, order_switch -%}
+{%- set s = board.stats -%}
+{%- set issues_url = board.repo_url ~ '/issues' -%}
+{%- set pulls_url = board.repo_url ~ '/pulls' -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<meta name="description" content="{{ board.team_names }}'s shared progress board for {{ board.repo }}, read from GitHub.">
+<title>{{ settings.title }} · team board</title>
+{{ favicons() }}
+{{ fonts() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='board.css') }}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" integrity="sha384-g4NTh/Iv5PPU4xPyhEWqPcwtNXOvdaDI8LLnyYfyNZOjKJeYQyjzQ9X5275eBjpt" crossorigin="anonymous" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" integrity="sha384-Z3REaz79l2IaAZqJsSABtTbhjgOUYyV3p90XNnAPCSHg3EMTz1fouunq9WZRtj3d" crossorigin="anonymous" defer></script>
+<script src="{{ url_for('static', filename='board.js') }}" defer></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='sparkle/sparkle.css') }}">
+{#- The playful layer (static/sparkle/, each file's header names its source). magic.js loads last and starts it all. #}
+{%- for f in ['fairy_cursor', 'sparkle_trail', 'click_confetti', 'scroll_indicator', 'tab_title_peekaboo', 'ambient_floaters', 'magic'] %}
+<script src="{{ url_for('static', filename='sparkle/' ~ f ~ '.js') }}" defer></script>
+{%- endfor %}
+</head>
+<body>
+<a class="skip" href="#priority">Skip to the {{ s.priority.title|lower }} work</a>
+<div class="atmos" aria-hidden="true"><div class="mesh"></div></div>
+
+<header class="nav-wrap">
+  <nav class="nav" aria-label="Sections">
+    <a class="nav-brand" href="#top" aria-label="Back to the top">{{ pomo('happy', 'nav-pomo') }}<span>{{ settings.title }}</span></a>
+    <ul class="nav-links">
+      <li><a href="#priority"><span class="nav-long">{{ s.priority.title }}</span><span class="nav-short">Priority</span></a></li>
+      <li><a href="#done">Done</a></li>
+      <li><a href="#people">People</a></li>
+      <li><a href="#prs"><span class="nav-long">Pull requests</span><span class="nav-short">PRs</span></a></li>
+      <li><a href="#grabs"><span class="nav-long">Up for grabs</span><span class="nav-short">Grabs</span></a></li>
+      <li><a href="#chores">Chores</a></li>
+    </ul>
+    <a class="nav-gh" href="{{ board.repo_url }}" target="_blank" rel="noopener noreferrer">GitHub</a>
+    {{ sky_toggle() }}
+  </nav>
+</header>
+
+<main id="top" class="page">
+
+  {% if board.error %}
+  <div class="stale wrap" role="alert">
+    {{ pomo('worried', 'stale-pomo') }}
+    <p><strong>This may be out of date.</strong> GitHub could not be reached just now, so this is the version from {{ 'a moment ago' if board.fetched_seconds_ago < 60 else board.fetched_seconds_ago|since }}. Reload in a minute. <span class="stale-why">{{ board.error }}</span></p>
+  </div>
+  {% endif %}
+
+  <section class="hero wrap" aria-labelledby="hero-title">
+    {%- if board.viewer %}
+    {%- set me = board.people|selectattr('login', 'equalto', board.viewer.login)|list %}
+    {%- set n_mine = me[0]['items']|length if me else none %}
+    <a class="hello" href="#people" data-burst>
+      <span data-boing>{{ avatar(board.viewer, 44, decorative=true) }}</span>
+      <span><strong>Hi {{ board.viewer.name }}!</strong>
+      {%- if n_mine is none %} Here's the board.
+      {%- elif n_mine == 0 %} No open issues are assigned to you right now, not counting chores and checklists.
+      {%- else %} {{ n_mine }} open {{ 'issue is' if n_mine == 1 else 'issues are' }} assigned to you, not counting chores and checklists.{% endif %}</span>
+    </a>
+    {%- endif %}
+    <h1 id="hero-title" class="hero-title">
+      Pick the next thing, <span class="pill-pomo" aria-hidden="true">{{ pomo('happy') }}</span> finish&nbsp;it, watch the wins pile up.
+    </h1>
+    <div class="hero-foot">
+      <div class="hero-copy">
+        <p class="hero-lede">The shared board for {{ board.team_names }} on <a class="nowrap" href="{{ board.repo_url }}" target="_blank" rel="noopener noreferrer">{{ board.repo }}</a>: what to pick up next, what got done, and who has what.</p>
+        <div class="hero-ctas">
+          <a class="btn btn--solid" href="#priority" data-magnet>Start with {{ s.priority.title|lower }}</a>
+          <a class="btn btn--ghost hero-gh" href="{{ issues_url }}" target="_blank" rel="noopener noreferrer" data-magnet>See every issue on GitHub</a>
+        </div>
+      </div>
+      <figure class="hero-art" aria-hidden="true">
+        <div class="hero-halo"></div>
+        {{ pomo('happy', 'hero-pomo') }}
+        <span class="spark s1"></span><span class="spark s2"></span><span class="spark s3"></span>
+      </figure>
+    </div>
+  </section>
+
+  <section id="priority" class="chapter chapter--first wrap" aria-label="{{ s.priority.title }} work and numbers">
+    <p class="fetched"><span class="dot{{ ' dot--warn' if board.error }}" aria-hidden="true"></span><span>Read from GitHub <time datetime="{{ board.fetched_at }}">{{ board.fetched_seconds_ago|since }}</time>{{ ', may be out of date' if board.error }}.
+      {%- if board.refreshing %} A newer read is on its way: reload in a minute to see it.
+      {%- elif not board.error %} The first visit after {{ board.refresh_minutes }}&nbsp;minute{{ '' if board.refresh_minutes == 1 else 's' }} starts a new read.{% endif %}</span></p>
+    <div class="bento">
+
+      {%- set r = s.priority -%}
+      {%- set rpct = ((100 * r.closed / r.total) if r.total else 0)|round(0, 'floor')|int %}
+      <div class="card b-priority reveal">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">{{ r.title }} <span class="count">{{ board.priority_open|length }}</span></h2>
+            <p class="card-sub">Every open issue labelled {{ r.label }}, assigned or not.{% if r.total %} {{ r.closed }} of {{ r.total }} done so far.{% endif %}</p>
+          </div>
+          <a class="link-arrow" href="{{ issues_url }}?q=is%3Aissue+label%3A{{ r.label|urlencode }}" target="_blank" rel="noopener noreferrer">All on GitHub</a>
+        </div>
+        {% if r.total %}<div class="meter" role="img" aria-label="{{ r.closed }} of {{ r.total }} {{ r.label }} issues done"><span data-fill style="--p:{{ rpct }}%"></span></div>{% endif %}
+        {% if board.priority_open %}
+        <ol class="priority-list">
+          {% for i in board.priority_open %}<li>{{ item(i, 'priority', viewer=board.viewer) }}</li>{% endfor %}
+        </ol>
+        {% else %}
+        <div class="empty">
+          {{ pomo('joy', 'empty-pomo') }}
+          <p class="empty-title">{{ 'Every ' ~ r.label ~ ' issue is done.' if r.total else 'Nothing is labelled ' ~ r.label ~ ' yet.' }}</p>
+          <p class="muted">Label an issue <span class="label label--plain">{{ r.label }}</span> on GitHub and it shows up here.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <a class="card stat b-issues reveal" href="{{ issues_url }}" target="_blank" rel="noopener noreferrer">
+        <span class="stat-num" data-count="{{ s.open_issues }}">{{ s.open_issues }}</span>
+        <span class="stat-label">open issues</span>
+        <span class="stat-go">See them on GitHub</span>
+      </a>
+
+      <a class="card stat b-prs reveal" href="#prs">
+        <span class="stat-num" data-count="{{ s.open_prs }}">{{ s.open_prs }}</span>
+        <span class="stat-label">open pull request{{ '' if s.open_prs == 1 else 's' }}</span>
+        <span class="stat-go">{{ 'Nothing open right now' if s.open_prs == 0 else 'Open and not merged yet' }}</span>
+      </a>
+
+      {%- set f = s.finished %}
+      <a class="card stat stat--win b-done reveal" href="#done">
+        <span class="stat-num" data-count="{{ f.total }}">{{ f.total }}</span>
+        <span class="stat-label">thing{{ '' if f.total == 1 else 's' }} finished in the last {{ s.recent_days }} days</span>
+        <span class="stat-go">See what got done</span>
+        {{ pomo('joy', 'stat-pomo') }}
+      </a>
+
+      {%- set ms = s.milestone %}
+      {%- if ms %}
+      {%- set mpct = ((100 * ms.closed / ms.total) if ms.total else 0)|round(0, 'floor')|int %}
+      <div class="card stat stat--review stat--tracker b-tracker b-milestone reveal">
+        <div class="tracker-text">
+          {% if ms.total %}
+          <p class="review-line"><span class="stat-num stat-num--inline" data-count="{{ ms.closed }}">{{ ms.closed }}</span> of {{ ms.total }} issues labelled {{ ms.label }} are closed</p>
+          {% else %}
+          <p class="review-line">No issue is labelled {{ ms.label }} yet.</p>
+          {% endif %}
+        </div>
+        {% if ms.total %}<div class="meter" role="img" aria-label="{{ ms.closed }} of {{ ms.total }} closed"><span data-fill style="--p:{{ mpct }}%"></span></div>{% else %}<span></span>{% endif %}
+        <a class="link-arrow" href="{{ issues_url }}?q=is%3Aissue+label%3A{{ ms.label|urlencode }}" target="_blank" rel="noopener noreferrer">All on GitHub</a>
+      </div>
+      {%- endif %}
+
+      {% for t in board.trackers %}
+      {%- set tpct = ((100 * t.closed / t.total) if t.total else 0)|round(0, 'floor')|int -%}
+      <div class="card stat stat--review stat--tracker b-tracker reveal">
+        <div class="tracker-text">
+          {% if t.total %}
+          <p class="review-line"><span class="stat-num stat-num--inline" data-count="{{ t.closed }}">{{ t.closed }}</span> of {{ t.total }} issues on the #{{ t.number }} checklist are closed</p>
+          {% else %}
+          <p class="review-line">The #{{ t.number }} checklist lists no issues yet.</p>
+          {% endif %}
+          <p class="tracker-title">{{ t.title }}</p>
+        </div>
+        {% if t.total %}<div class="meter" role="img" aria-label="{{ t.closed }} of {{ t.total }} closed"><span data-fill style="--p:{{ tpct }}%"></span></div>{% else %}<span></span>{% endif %}
+        <a class="link-arrow" href="{{ t.url }}" target="_blank" rel="noopener noreferrer">The checklist on GitHub</a>
+      </div>
+      {% endfor %}
+
+    </div>
+  </section>
+
+  {%- set cal = board.calendar %}
+  {%- set shown = cal.selected[:7] %}
+  <section id="done" class="chapter done" aria-labelledby="done-title">
+    <div class="wrap">
+      <header class="done-head reveal">
+        <div class="done-pomo-wrap">{{ pomo('joy', 'done-pomo') }}<div class="confetti" aria-hidden="true"></div></div>
+        <div>
+          <h2 id="done-title" class="chapter-title">Recently done</h2>
+          {#- One headline per month, so the number and the names always match the month on show (board.js swaps them). #}
+          {%- for m in cal.months %}
+          <p class="done-big" data-month-variant="{{ m.key }}"{% if m.key != shown %} hidden{% endif %}>
+            {%- if m.total %}<span data-count="{{ m.total }}">{{ m.total }}</span> thing{{ '' if m.total == 1 else 's' }} finished in {{ m.name }}{% for b in m.breakdown %}{{ ': ' if loop.first else (' and ' if loop.last else ', ') }}{{ b.n }} by {{ b.name }}{% endfor %}.
+            {%- else %}Nothing finished in {{ m.name }}{{ ' yet' if m.current }}.{% endif -%}
+          </p>
+          {%- endfor %}
+          <p class="chapter-sub">Pick a day to see what was finished, hour by hour. A merged pull request is one row, with the issues it closed under it. A dash instead of a tick means it was closed without being done.</p>
+        </div>
+      </header>
+
+      {%- set first_open = cal.months[0].cells|selectattr('state', 'equalto', 'open')|first %}
+      {% if board.done_days %}
+      <div class="done-tools" hidden>
+        <p class="since" data-since data-zone="{{ board.clock.zone }}" data-from="{{ cal['from'] }}" data-first="{{ first_open.num }} {{ cal.months[0].name }}" hidden></p>
+        <div class="chips who-filter" role="group" aria-label="Whose work to show" hidden>
+          <button type="button" class="chip" aria-pressed="true" data-who="">Everyone</button>
+          {% for p in board.people %}<button type="button" class="chip" aria-pressed="false" data-who="{{ p.login }}" data-name="{{ p.name }}">{{ avatar({'name': p.name, 'avatar': avatar_for(board, p.login)}, 22, decorative=true) }}{{ p.name }}</button>{% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="cal-layout">
+        <div class="cal-card">
+          {%- for m in cal.months %}
+          <div class="cal-month-wrap" data-month="{{ m.key }}"{% if m.key != shown %} hidden{% endif %}>
+            <div class="cal-head">
+              <h3 class="cal-month">{{ m.label }}</h3>
+              <div class="cal-nav">
+                {%- set before = cal.months[loop.index0 - 1] if not loop.first %}
+                {%- set after = cal.months[loop.index0 + 1] if not loop.last %}
+                <button type="button" class="cal-arrow" data-step="-1"{% if loop.first %} disabled{% endif %} aria-label="{{ 'Previous month: the board starts on ' ~ first_open.num ~ ' ' ~ cal.months[0].name if loop.first else 'Previous month: ' ~ before.label }}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button type="button" class="cal-arrow" data-step="1"{% if loop.last %} disabled{% endif %} aria-label="{{ 'Next month: not here yet' if loop.last else 'Next month: ' ~ after.label }}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              </div>
+            </div>
+            <div class="cal-week" aria-hidden="true"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span class="we">S</span><span class="we">S</span></div>
+            <div class="cal-grid" role="group" aria-label="{{ m.label }}: pick a day. Arrow keys move between days.">
+              {%- for _ in range(m.lead) %}<span class="cal-day cal-day--pad" aria-hidden="true"></span>{% endfor %}
+              {%- for c in m.cells %}
+              {%- if c.state != 'open' %}<span class="cal-day cal-day--{{ c.state }}{{ ' is-weekend' if c.weekend }}" aria-hidden="true" title="{{ 'Before the first finished item, on ' ~ first_open.num ~ ' ' ~ cal.months[0].name if c.state == 'before' else 'Still to come' }}"><span class="cal-num">{{ c.num }}</span></span>
+              {%- else %}
+              {%- set a = c.says[''] %}
+              <button type="button" class="cal-day lvl-{{ a.level }}{{ ' is-today' if c.today }}{{ ' is-weekend' if c.weekend }}" data-date="{{ c.date }}"
+                aria-pressed="{{ 'true' if c.selected else 'false' }}" aria-controls="tl-{{ c.date }}" tabindex="{{ '0' if c.selected else '-1' }}"
+                aria-label="{{ a.label }}"
+                {%- for w, x in c.says.items() %} data-n-{{ w or 'all' }}="{{ x.n }}" data-level-{{ w or 'all' }}="{{ x.level }}" data-late-{{ w or 'all' }}="{{ x.late }}" data-label-{{ w or 'all' }}="{{ x.label }}"{% endfor %}>
+                <span class="cal-num">{{ c.num }}</span>
+                <span class="cal-n" aria-hidden="true">{{ a.n or '' }}</span>
+                {%- if c.weekend and a.n %}{{ sun('cal-mark') }}{% elif a.late %}{{ moon('cal-mark') }}{% endif %}
+                <span class="cal-new" hidden></span>
+              </button>
+              {%- endif %}
+              {%- endfor %}
+            </div>
+          </div>
+          {%- endfor %}
+          <div class="cal-legend">
+            <span class="cal-scale" aria-hidden="true">Fewer <i class="lvl-0"></i><i class="lvl-1"></i><i class="lvl-2"></i><i class="lvl-3"></i><i class="lvl-4"></i> More</span>
+            <span>{{ moon('legend-icon') }} After hours: before {{ board.clock.work_start }} or after {{ board.clock.work_end }}, on the finisher's own clock</span>
+            <span>{{ sun('legend-icon legend-sun') }} Weekend work <i class="legend-quiet"></i> A quiet weekend</span>
+            <span><i class="legend-new"></i> Has something new</span>
+          </div>
+          <div class="cal-tip" role="presentation" hidden></div>
+        </div>
+
+        <div class="tl-stack">
+          {%- for p in cal.days %}
+          <section class="tl{{ ' tl--weekend' if p.weekend }}" id="tl-{{ p.date }}" data-date="{{ p.date }}" aria-labelledby="tl-title-{{ p.date }}"{% if not p.selected %} hidden{% endif %}>
+            <header class="tl-head">
+              <div>
+                <h3 class="tl-title" id="tl-title-{{ p.date }}" tabindex="-1">{{ p.title }}{{ variants(p.says, 'stamp', cls='tl-stamp') }}</h3>
+                <p class="tl-date">{% if p.title in ('Today', 'Yesterday') %}{{ p.long }} · {% endif %}times are {{ board.clock.zone_label }} time</p>
+              </div>
+              <p class="tl-stat">{{ variants(p.says, 'stat') }}</p>
+            </header>
+            {%- for w, c in p.says.items() if c.empty %}
+            <div class="tl-empty" data-who-variant="{{ w }}"{% if w %} hidden{% endif %}>
+              {{ pomo(c.mood or 'happy', 'tl-pomo') }}
+              <div>
+                <p>{{ c.empty }}</p>
+                {%- if p.is_today and not w and cal.latest_active %}
+                <p class="tl-empty-actions"><button type="button" class="btn-soft" data-go="{{ cal.latest_active.date }}">Show {{ "yesterday" if cal.latest_active.title == "Yesterday" else cal.latest_active.long }}</button> <a href="#grabs">or grab one from Up for grabs</a></p>
+                {%- endif %}
+              </div>
+            </div>
+            {%- endfor %}
+            {%- if p.rows %}
+            <ol class="tl-list">
+              {%- for w, c in p.says.items() if c.foot %}
+              <li class="tl-foot tl-foot--{{ c.mood }}" data-who-variant="{{ w }}"{% if w %} hidden{% endif %}>
+                {{ pomo(c.mood, 'tl-pomo') }}<p>{{ c.foot }}</p>
+              </li>
+              {%- endfor %}
+              {%- for r in p.rows %}
+              {%- if loop.index0 == p.divider %}
+              <li class="tl-divider" aria-hidden="true"><span>{{ moon() }} {{ board.clock.work_end }}, {{ board.clock.zone_label }} time</span></li>
+              {%- endif %}
+              {%- set k = r.clock %}
+              <li class="tl-row zone-{{ k.zone }}{{ ' is-off' if k.kind and r.done }}{{ ' is-wkend' if k.kind == 'weekend' and r.done }}" data-at="{{ r.item.closed_at }}" data-who="{{ k.login }}">
+                <div class="tl-time">
+                  <time datetime="{{ r.item.closed_at }}">{{ k.board.strftime('%H:%M') }}</time>
+                  {%- if r.done and k.kind == 'weekend' %}<span class="tl-off">{{ sun() }} weekend</span>
+                  {%- elif r.done and k.kind and k.zone != 'night' %}<span class="tl-off">{{ moon() }} after hours</span>
+                  {%- elif r.done and k.kind %}<span class="sr-only">after hours</span>{% endif %}{% if r.done and k.kind and k.kind != 'weekend' and k.own_note %}<small class="tl-own">{{ k.own_note }}</small>{% endif %}
+                </div>
+                <span class="tl-dot" aria-hidden="true"></span>
+                <ol class="work">{{ work_row(r, board.viewer) }}</ol>
+              </li>
+              {%- endfor %}
+              {%- if p.divider is not none and p.divider == p.rows|length %}
+              <li class="tl-divider" aria-hidden="true"><span>{{ moon() }} {{ board.clock.work_end }}, {{ board.clock.zone_label }} time</span></li>
+              {%- endif %}
+            </ol>
+            {%- endif %}
+          </section>
+          {%- endfor %}
+        </div>
+      </div>
+      <p class="who-empty muted" hidden>Nothing by this person in {{ cal.months|selectattr('key', 'equalto', shown)|map(attribute='name')|first }}.</p>
+    </div>
+  </section>
+
+  <section id="people" class="chapter wrap" aria-labelledby="people-title">
+    <header class="chapter-head reveal">
+      <h2 id="people-title" class="chapter-title">Who has what</h2>
+      <p class="chapter-sub">Open issues assigned to each of you, the {{ s.priority.title|lower }} ones first. Chores are listed at the bottom.</p>
+    </header>
+    <div class="people">
+      {% for p in board.people %}
+      {%- set av = avatar_for(board, p.login) -%}
+      <div class="card person reveal">
+        <div class="person-head">
+          <span class="person-photo" data-boing data-burst>{{ avatar({'name': p.name, 'avatar': av}, 72, decorative=true) }}</span>
+          <div>
+            <h3 class="person-name">{{ p.name }}{% if board.viewer and board.viewer.login == p.login %} <span class="you-tag"><span class="sr-only">(</span>you<span class="sr-only">)</span></span>{% endif %}</h3>
+            <p class="muted">{{ p['items']|length }} open {{ 'issue' if p['items']|length == 1 else 'issues' }} assigned</p>
+          </div>
+        </div>
+        {% if p['items'] %}
+        <ol class="rows">
+          {% for i in p['items'] %}<li>{{ item(i, 'person', viewer=board.viewer) }}</li>{% endfor %}
+        </ol>
+        {% else %}
+        <div class="empty empty--small">
+          {{ pomo('sleepy', 'empty-pomo') }}
+          <p class="empty-title">Nothing assigned to {{ p.name }} right now.</p>
+          <a class="link-arrow" href="#grabs">Pick something up for grabs</a>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section id="prs" class="chapter wrap" aria-labelledby="prs-title">
+    <header class="chapter-head reveal">
+      <h2 id="prs-title" class="chapter-title">Open pull requests</h2>
+      <p class="chapter-sub">Code waiting for a review or a merge.</p>
+    </header>
+    {% if board.open_prs %}
+    <ol class="rows rows--cards">
+      {% for i in board.open_prs %}<li class="card reveal">{{ item(i, 'pr') }}</li>{% endfor %}
+    </ol>
+    {% else %}
+    <div class="card empty empty--wide reveal">
+      {{ pomo('sleepy', 'empty-pomo empty-pomo--big') }}
+      <div>
+        <p class="empty-title">No pull requests are open.</p>
+        <p class="muted">Nothing is waiting for a review. A new one shows up here as soon as it opens.</p>
+        <a class="link-arrow" href="{{ pulls_url }}?q=is%3Apr" target="_blank" rel="noopener noreferrer">All pull requests on GitHub</a>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  <section id="grabs" class="chapter wrap grabs" data-order="{{ board.order }}" aria-labelledby="grabs-title">
+    <header class="chapter-head grabs-head">
+      <h2 id="grabs-title" class="chapter-title">Up for grabs</h2>
+      <p class="chapter-sub">Open issues that nobody has claimed yet. Chores are listed separately.<span class="take-hint" hidden> Press &ldquo;It&rsquo;s mine!&rdquo; on one to claim it.</span></p>
+      {% if board.unclaimed %}
+      {%- set counts = {} -%}
+      {%- for i in board.unclaimed -%}{%- for l in i.chips -%}{%- set _ = counts.update({l.name: counts.get(l.name, 0) + 1}) -%}{%- endfor -%}{%- endfor -%}
+      {%- set colours = {} -%}
+      {%- for i in board.unclaimed -%}{%- for l in i.chips -%}{%- set _ = colours.update({l.name: l.color}) -%}{%- endfor -%}{%- endfor -%}
+      {{ order_switch(board.order) }}
+      <p class="grabs-count" aria-live="polite"><span data-shown>{{ board.unclaimed|length }}</span> open<span class="sr-only" data-order-said></span></p>
+      <div class="chips" role="group" aria-label="Filter by label" hidden>
+        <button type="button" class="chip" aria-pressed="true" data-filter="">All <span>{{ board.unclaimed|length }}</span></button>
+        {% for name, n in counts|dictsort(by='value', reverse=true) %}
+        <button type="button" class="chip" aria-pressed="false" data-filter="{{ name }}" style="--lc:#{{ colours[name] }}">{{ name }} <span>{{ n }}</span></button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </header>
+    {% if board.unclaimed %}
+    <div class="grab-groups">
+      {% for g in board.unclaimed_groups if g['items'] %}
+      <div class="grab-group grab-group--{{ g.key or 'unsorted' }}">
+        <h3 class="grab-group-title">{{ g.title }} <span class="count">{{ g['items']|length }}</span></h3>
+        <ol class="rows rows--compact">
+          {% for i in g['items'] %}<li class="reveal-row" data-number="{{ i.number }}" data-updated="{{ i.updated_at }}" data-created="{{ i.created_at }}">{{ item(i, 'row', viewer=board.viewer) }}</li>{% endfor %}
+        </ol>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="card empty empty--wide">
+      {{ pomo('joy', 'empty-pomo') }}
+      <p class="empty-title">Nothing up for grabs: every open issue is a chore or assigned to one of you.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section id="chores" class="chapter wrap" aria-labelledby="chores-title">
+    <header class="chapter-head reveal">
+      <h2 id="chores-title" class="chapter-title">Chores <span class="count count--title">{{ board.todos|length }}</span></h2>
+      <p class="chapter-sub">Small admin jobs: asks, filing, tidying, checks (GitHub label <span class="label label--plain">{{ settings.labels.chore }}</span>). They aren't changes to the product, so nothing else is blocked on them. Close each one on GitHub when it's done.</p>
+    </header>
+    {% if board.todos %}
+    <ol class="rows rows--compact">
+      {% for i in board.todos %}<li class="reveal-row">{{ item(i, 'chore', viewer=board.viewer) }}</li>{% endfor %}
+    </ol>
+    {% else %}
+    <div class="card empty empty--wide">
+      {{ pomo('joy', 'empty-pomo') }}
+      <p class="empty-title">No chores right now.</p>
+    </div>
+    {% endif %}
+  </section>
+
+</main>
+<div class="toast" role="status" aria-live="polite" hidden></div>
+<div class="stp-mascot" aria-hidden="true" hidden>{{ pomo('happy') }}{{ pomo('joy') }}</div>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-cta reveal">
+      <p class="footer-kicker">{{ pomo('happy', 'footer-pomo') }} Ready for the next one?</p>
+      <a class="btn btn--huge" href="{{ board.repo_url }}" target="_blank" rel="noopener noreferrer" data-magnet>Open the repo on GitHub <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 11l6-6M6 5h5v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    </div>
+    <div class="footer-meta">
+      <ul class="footer-links">
+        <li><a href="{{ issues_url }}" target="_blank" rel="noopener noreferrer">Issues</a></li>
+        <li><a href="{{ pulls_url }}" target="_blank" rel="noopener noreferrer">Pull requests</a></li>
+        <li><a href="{{ url_for('board_json') }}">Raw data (JSON)</a></li>
+        <li>{{ sky_toggle() }}</li>
+      </ul>
+      <p class="muted">{{ board.repo }}. Read from GitHub {{ board.fetched_seconds_ago|since }}{{ ', may be out of date' if board.error }}.</p>
+      {%- if board.viewer %}
+      <form class="signout" method="post" action="{{ url_for('auth.logout') }}">
+        <span class="muted">Signed in as <strong>{{ board.viewer.name }}</strong>{% if board.viewer.name != board.viewer.login %} ({{ board.viewer.login }}){% endif %}.</span>
+        <button type="submit" class="btn-soft">Sign out</button>
+      </form>
+      {%- endif %}
+    </div>
+  </div>
+</footer>
+</body>
+</html>

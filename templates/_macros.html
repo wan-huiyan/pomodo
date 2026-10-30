@@ -1,0 +1,235 @@
+{# Shared pieces for board.html and error.html. Only body_html and comment html are rendered with |safe. #}
+
+{% macro pomo(mood='happy', cls='') -%}
+<svg class="pomo pomo--{{ mood }} {{ cls }}" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
+  <rect class="m-stem" x="7" y="2" width="2" height="1"/>
+  <rect class="m-leaf" x="5" y="3" width="6" height="1"/>
+  <rect class="m-body" x="4" y="4" width="8" height="1"/>
+  <rect class="m-leaf" x="5" y="4" width="1" height="1"/>
+  <rect class="m-leaf" x="7" y="4" width="2" height="1"/>
+  <rect class="m-leaf" x="10" y="4" width="1" height="1"/>
+  <rect class="m-body" x="3" y="5" width="10" height="1"/>
+  <rect class="m-body" x="2" y="6" width="12" height="6"/>
+  <rect class="m-body" x="3" y="12" width="10" height="1"/>
+  <rect class="m-body" x="4" y="13" width="8" height="1"/>
+  <rect class="m-shine" x="3" y="6" width="1" height="2"/>
+  <rect class="m-cheek" x="4" y="9" width="1" height="1"/>
+  <rect class="m-cheek" x="11" y="9" width="1" height="1"/>
+  {%- if mood == 'joy' %}
+  <rect class="m-ink" x="4" y="8" width="1" height="1"/><rect class="m-ink" x="5" y="7" width="1" height="1"/><rect class="m-ink" x="6" y="8" width="1" height="1"/>
+  <rect class="m-ink" x="9" y="8" width="1" height="1"/><rect class="m-ink" x="10" y="7" width="1" height="1"/><rect class="m-ink" x="11" y="8" width="1" height="1"/>
+  <rect class="m-ink" x="6" y="10" width="4" height="1"/><rect class="m-tongue" x="7" y="11" width="2" height="1"/>
+  {%- elif mood == 'sleepy' %}
+  <rect class="m-ink" x="4" y="8" width="2" height="1"/><rect class="m-ink" x="10" y="8" width="2" height="1"/>
+  <rect class="m-ink" x="7" y="10" width="2" height="1"/>
+  {%- elif mood == 'worried' %}
+  <rect class="m-ink" x="5" y="7" width="1" height="2"/><rect class="m-ink" x="10" y="7" width="1" height="2"/>
+  <rect class="m-ink" x="7" y="10" width="2" height="1"/><rect class="m-ink" x="6" y="11" width="1" height="1"/><rect class="m-ink" x="9" y="11" width="1" height="1"/>
+  {%- else %}
+  <g class="pomo-eyes"><rect class="m-ink" x="5" y="7" width="1" height="2"/><rect class="m-ink" x="10" y="7" width="1" height="2"/></g>
+  <rect class="m-ink" x="6" y="9" width="1" height="1"/><rect class="m-ink" x="9" y="9" width="1" height="1"/><rect class="m-ink" x="7" y="10" width="2" height="1"/>
+  {%- endif %}
+</svg>
+{%- endmacro %}
+
+{% macro favicons() -%}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v=1">
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon-dark.svg') }}?v=1" media="(prefers-color-scheme: dark)">
+{%- endmacro %}
+
+{% macro fonts() -%}
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&amp;display=swap">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,800&amp;display=swap">
+{%- endmacro %}
+
+{#- decorative: the name is already in the text next to the photo, so a screen reader skips the photo. #}
+{% macro avatar(p, size=24, decorative=false) -%}
+{%- if p.avatar -%}
+<img class="av" src="{{ p.avatar }}{{ '&' if '?' in p.avatar else '?' }}s={{ size * 2 }}" width="{{ size }}" height="{{ size }}" alt="{{ '' if decorative else p.name }}"{% if not decorative %} title="{{ p.name }}"{% endif %} decoding="async" referrerpolicy="no-referrer">
+{%- elif decorative -%}
+<span class="av av--initial" style="--av:{{ size }}px" aria-hidden="true">{{ p.name[:1]|upper }}</span>
+{%- else -%}
+<span class="av av--initial" style="--av:{{ size }}px" title="{{ p.name }}" role="img" aria-label="{{ p.name }}">{{ p.name[:1]|upper }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- Light or dark: a sun by day, a moon and stars by night (static/theme.js shows it and keeps aria-checked). #}
+{% macro sky_toggle() -%}
+<button type="button" class="sky-toggle" role="switch" aria-checked="false" aria-label="Dark mode" title="Light or dark" hidden>
+  <span class="sky-night" aria-hidden="true"></span>
+  <svg class="sky-stars" viewBox="0 0 14 12" aria-hidden="true" shape-rendering="crispEdges"><g fill="#fff3c4"><path d="M3 2h1v3H3zM2 3h3v1H2zM10 6h1v3h-1zM9 7h3v1H9z"/></g><g fill="#f6c453"><path d="M9 1h1v1H9zM4 9h1v1H4zM13 3h1v1h-1z"/></g></svg>
+  <svg class="sky-cloud" viewBox="0 0 12 6" aria-hidden="true" shape-rendering="crispEdges"><path fill="#fff" d="M4 1h3v1H4zM2 2h6v1H2zM8 2h2v1H8zM1 3h10v1H1zM0 4h12v1H0z"/><path fill="#ecc3a9" d="M1 5h10v1H1z"/></svg>
+  <span class="sky-knob" aria-hidden="true">
+    <svg class="sky-sun" viewBox="0 0 12 12" shape-rendering="crispEdges"><path fill="#f6c453" d="M4 3h4v6H4zM3 4h6v4H3zM5 0h2v2H5zM5 10h2v2H5zM0 5h2v2H0zM10 5h2v2h-2zM2 2h1v1H2zM9 2h1v1H9zM2 9h1v1H2zM9 9h1v1H9z"/><path fill="#3a2620" d="M4 5h1v1H4zM7 5h1v1H7z"/><path fill="#f08d78" d="M3 6h1v1H3zM8 6h1v1H8z"/></svg>
+    <svg class="sky-moon" viewBox="0 0 12 12" shape-rendering="crispEdges"><path fill="#fde9c2" d="M4 1h4v1H4zM2 2h4v1H2zM1 3h4v6H1zM2 9h4v1H2zM4 10h4v1H4z"/><path fill="#3a2620" d="M2 5h2v1H2z"/><path fill="#f08d78" d="M3 7h1v1H3z"/><path fill="#f6c453" d="M8 4h1v3H8zM7 5h3v1H7z"/></svg>
+  </span>
+</button>
+{%- endmacro %}
+
+{% macro labels(i, skip='') -%}
+{%- for l in i.chips if l.name != skip %}<span class="label" style="--lc:#{{ l.color }}">{{ l.name }}</span>{% endfor -%}
+{%- endmacro %}
+
+{% macro comment_count(i) -%}
+{%- set n = i.comments|length + i.comments_hidden -%}
+{%- if n -%}
+<span class="meta-comments" title="{{ n }} comment{{ '' if n == 1 else 's' }}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>{{ n }}<span class="sr-only"> comment{{ '' if n == 1 else 's' }}</span></span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro tasks(i) -%}
+{%- if i.tasks.total -%}
+{%- set pct = (100 * i.tasks.done / i.tasks.total)|round(0, 'floor')|int -%}
+<span class="tasks"><span class="tasks-bar" data-fill style="--p:{{ pct }}%"><span></span></span><span class="tasks-text">{{ i.tasks.done }} of {{ i.tasks.total }} task{{ '' if i.tasks.total == 1 else 's' }}</span></span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- both: an Up for grabs row says when it was updated and when it was opened; the CSS shows the one that
+   matches the order the list is in, so board.js can re-sort the list without loading a page. #}
+{% macro when(i, both=false) -%}
+<span class="meta-time{{ ' meta-time--updated' if both }}">Updated <time datetime="{{ i.updated_at }}">{{ i.updated_ago }}</time></span>
+{%- if both %}<span class="meta-time meta-time--opened">Opened <time datetime="{{ i.created_at }}">{{ i.created_ago }}</time></span>{% endif -%}
+{%- endmacro %}
+
+{% macro meta(i, variant) -%}
+<span class="item-meta">
+  {%- if variant != 'priority' and i.priority == 'priority' %}<span class="tag tag--priority">{{ settings.labels.priority_title }}</span>{% endif -%}
+  {%- if variant in ('priority', 'chore') -%}
+    {%- set names = i.assignees|map(attribute='name')|list %}
+    <span class="meta-who" data-names='{{ names|tojson }}'>{{ 'Assigned to ' ~ (names|join(' and ')) if names else 'Not assigned yet' }}</span>
+    {{ labels(i, skip=settings.labels.chore) }}
+    {{ when(i, both=variant == 'row') }}
+  {%- else -%}
+    {%- if i.kind == 'pr' and i.draft %}<span class="tag">Draft</span>{% endif -%}
+    {%- if i.kind == 'pr' and i.review_decision %}<span class="tag tag--{{ i.review_decision }}">{{ i.review_decision|replace('_', ' ')|capitalize }}</span>{% endif -%}
+    {{ labels(i) }}
+    {{ when(i, both=variant == 'row') }}
+  {%- endif -%}
+  {%- if i.kind == 'pr' and i.size and i.size.add is not none %}<span class="meta-size" title="Lines added and removed"><span class="add">+{{ i.size.add }}</span> <span class="del">&minus;{{ i.size.del }}</span><span class="sr-only"> lines added and removed</span></span>{% endif -%}
+  {%- if i.kind == 'pr' and i.closes %}<span class="meta-closes">Closes {% for n in i.closes %}#{{ n }}{{ ', ' if not loop.last }}{% endfor %}</span>{% endif -%}
+  {{ tasks(i) }}
+  {{ comment_count(i) }}
+  {%- set who = i.assignees if i.assignees else ([i.author] if i.kind == 'pr' else []) -%}
+  {%- if who and variant not in ('priority', 'chore') %}<span class="avatars">{% for a in who %}{{ avatar(a, 22) }}{% endfor %}</span>{% endif -%}
+</span>
+{%- endmacro %}
+
+{# One issue or pull request. variant: priority, chore, row, person, pr.
+   The title links to GitHub; the line under it is the <summary> that opens the details, so a tap on
+   the title never toggles and a tap on the meta line never navigates. #}
+{% macro take(i, viewer) -%}
+{%- if viewer and i.kind == 'issue' and i.state == 'open' -%}
+{%- set mine = viewer.login in (i.assignees|map(attribute='login')|list) -%}
+{#- board.js keeps aria-label in step: "It's mine! Assign me #24" or "All mine. Give back #24" (the visible words come first). -#}
+<button type="button" class="take" data-number="{{ i.number }}" data-on="{{ 'true' if mine else 'false' }}" data-me="{{ viewer.name }}" aria-label="{{ ('All mine. Give back #' if mine else "It's mine! Assign me #") ~ i.number }}" title="{{ 'Assigned to you on GitHub. Click to give it back' if mine else 'Assign yourself on GitHub' }}" hidden>
+  <span class="take-off">It's mine!</span>
+  <span class="take-on">
+    {%- if viewer.avatar %}<img class="av" src="{{ viewer.avatar }}{{ '&' if '?' in viewer.avatar else '?' }}s=44" width="22" height="22" alt="" decoding="async" referrerpolicy="no-referrer">
+    {%- else %}<span class="av av--initial" style="--av:22px" aria-hidden="true">{{ viewer.name[:1]|upper }}</span>{% endif %}All mine</span>
+</button>
+{%- endif -%}
+{%- endmacro %}
+
+{# The It's mine! button (shown only with JavaScript, to a signed-in person the board knows) assigns or unassigns them on GitHub. #}
+{% macro item(i, variant='row', viewer=none) -%}
+<article class="item item--{{ variant }}" data-labels='{{ i.labels|map(attribute="name")|list|tojson }}'>
+  {%- if variant == 'priority' %}<span class="priority-num" aria-hidden="true"></span>{% endif %}
+  <div class="item-main">
+    <div class="item-head">
+      <h3 class="item-title">
+        {%- if i.url %}<a href="{{ i.url }}" target="_blank" rel="noopener noreferrer"><span class="item-num">#{{ i.number }}</span> {{ i.title }}</a>
+        {%- else %}<span class="item-num">#{{ i.number }}</span> {{ i.title }}{% endif %}
+      </h3>
+      {{- take(i, viewer) -}}
+    </div>
+    <details class="more">
+      <summary>{{ meta(i, variant) }}<span class="more-btn"><span class="more-word">Details</span><svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></summary>
+      <div class="more-body">
+        <p class="more-by">Opened by {{ i.author.name }} {{ i.created_ago }}.{% if i.url %} <a href="{{ i.url }}" target="_blank" rel="noopener noreferrer">Open on GitHub</a>{% endif %}</p>
+        {% if i.body_html.strip() %}<div class="prose">{{ i.body_html|safe }}</div>{% else %}<p class="muted">No description.</p>{% endif %}
+        {% if i.comments %}
+        <ol class="comments" aria-label="Comments">
+          {% for c in i.comments %}
+          <li class="comment">
+            <div class="comment-head">
+              {{ avatar(c.author, 20, decorative=true) }}
+              <strong>{{ c.author.name }}</strong>
+              {% if c.ago %}{% if c.url %}<a href="{{ c.url }}" target="_blank" rel="noopener noreferrer"><time datetime="{{ c.at }}">{{ c.ago }}</time></a>{% else %}<time datetime="{{ c.at }}">{{ c.ago }}</time>{% endif %}{% endif %}
+              {% if c.kind == 'review' %}<span class="tag">Review: {{ (c.review_state or '')|replace('_', ' ') }}</span>{% endif %}
+              {% if c.path %}<code class="comment-path">{{ c.path }}</code>{% endif %}
+            </div>
+            {% if c.html.strip() %}<div class="prose">{{ c.html|safe }}</div>{% endif %}
+          </li>
+          {% endfor %}
+        </ol>
+        {% endif %}
+        {% if i.comments_hidden and i.url %}<a class="more-hidden" href="{{ i.url }}" target="_blank" rel="noopener noreferrer">{{ i.comments_hidden }} more comment{{ '' if i.comments_hidden == 1 else 's' }} on GitHub</a>{% endif %}
+      </div>
+    </details>
+  </div>
+</article>
+{%- endmacro %}
+
+{# "Checked in the app": the issue (or merged pull request) carries the human-verified label, so a person saw the fix
+   work in the running app. Only labelled ones get the badge; the comment on GitHub says who checked, where and what
+   they saw. A signed-in person also gets a button (shown by board.js, which then drops the plain badge): where
+   `tickable` it ticks, with optional notes; on a checked one it unticks. Either way the board labels and comments. #}
+{% macro checked(i, viewer=none, tickable=true) -%}
+{%- if i.verified %} <span class="tag tag--checked" title="A person checked this fix in the running app. The comment on GitHub says who, where and what they saw."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M1.5 14c0-2.6 2-4.3 4.5-4.3 1 0 1.9.3 2.6.8M9.5 11.5l1.8 1.8 3.4-3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Checked in the app</span>{% endif -%}
+{%- if viewer and (tickable or i.verified) %} <button type="button" class="check" data-number="{{ i.number }}" data-on="{{ 'true' if i.verified else 'false' }}" data-label="{{ settings.labels.verified }}" {% set ref = ('PR #' if i.kind == 'pr' else '#') ~ i.number %}data-ref="{{ ref }}" aria-label="{{ ('Checked in the app, untick ' if i.verified else 'Mark as checked in the app ') ~ ref }}" title="{{ 'Checked in the running app. Click to untick' if i.verified else 'Did you see this fix work in the running app? Mark it as checked' }}" hidden>
+  <span class="check-off">Checked in the app?</span><span class="check-on"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M1.5 14c0-2.6 2-4.3 4.5-4.3 1 0 1.9.3 2.6.8M9.5 11.5l1.8 1.8 3.4-3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Checked in the app</span></button>{% endif -%}
+{%- endmacro %}
+
+{# One finished piece of work in Recently done: a merged pull request with the issues it closed, or one closed issue. #}
+{% macro work_row(r, viewer=none) -%}
+{%- set i = r.item -%}
+<li class="work-row{{ ' work-row--dim' if not r.done }}" data-at="{{ i.closed_at }}" data-who="{{ r.who.login if r.who else '' }}">
+  <span class="done-tick" aria-hidden="true">
+    {%- if r.done %}<svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    {%- else %}<svg viewBox="0 0 16 16"><path d="M4.5 8h7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>{% endif -%}
+  </span>
+  <div class="work-main">
+    <p class="work-title">
+      {%- set num = ('PR #' if i.kind == 'pr' else '#') ~ i.number %}
+      {%- if i.url %}<a href="{{ i.url }}" target="_blank" rel="noopener noreferrer"><span class="item-num">{{ num }}</span> {{ r.title }}</a>
+      {%- else %}<span class="item-num">{{ num }}</span> {{ r.title }}{% endif %}
+      {#- A merged pull request is ticked on its own row only when no issue line under it can carry the tick. -#}
+      {{ checked(i, viewer, r.done and (i.kind == 'issue' or (i.state == 'merged' and not r.fixed))) }} <span class="new-badge" hidden>New</span>
+    </p>
+    {%- if r.fixed %}
+    <ul class="work-fixed">
+      {%- for j in r.fixed %}<li>Fixes {% if j.url %}<a href="{{ j.url }}" target="_blank" rel="noopener noreferrer">#{{ j.number }}</a>{% else %}#{{ j.number }}{% endif %} {{ j.title }}{{ checked(j, viewer) }}</li>{% endfor -%}
+    </ul>
+    {%- endif %}
+    <p class="work-meta">
+      {%- if r.who %}{{ avatar(r.who, 24, decorative=true) }} <span class="work-who">{{ r.who.name }}</span>{% else %}<span class="work-who">Someone</span>{% endif %} {{ r.verb }}
+      <span class="meta-part"><span class="meta-dot" aria-hidden="true">·</span> <time datetime="{{ i.closed_at }}">{{ r.when }}</time></span>
+      {%- if i.kind == 'pr' and i.size and i.size.add is not none %} <span class="meta-part"><span class="meta-dot" aria-hidden="true">·</span> <span class="meta-size" title="Lines added and removed"><span class="add">+{{ i.size.add }}</span> <span class="del">&minus;{{ i.size.del }}</span> lines</span></span>{% endif %}
+    </p>
+  </div>
+</li>
+{%- endmacro %}
+
+{#- Small pixel icons for the day timeline: a moon for after hours, a sun for the weekend. -#}
+{% macro moon(cls='') -%}
+<svg class="px-icon {{ cls }}" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><rect x="3" y="0" width="3" height="1"/><rect x="2" y="1" width="2" height="1"/><rect x="1" y="2" width="2" height="4"/><rect x="2" y="6" width="2" height="1"/><rect x="3" y="7" width="3" height="1"/></svg>
+{%- endmacro %}
+{% macro sun(cls='') -%}
+<svg class="px-icon {{ cls }}" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><rect x="3" y="2" width="3" height="5"/><rect x="2" y="3" width="5" height="3"/><rect x="4" y="0" width="1" height="1"/><rect x="4" y="8" width="1" height="1"/><rect x="0" y="4" width="1" height="1"/><rect x="8" y="4" width="1" height="1"/><rect x="1" y="1" width="1" height="1"/><rect x="7" y="1" width="1" height="1"/><rect x="1" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/></svg>
+{%- endmacro %}
+
+{#- One text per person filter (everyone, then each person): board.js shows the one matching the chip pressed. -#}
+{% macro variants(says_by, key, tag='span', cls='') -%}
+{%- for w, c in says_by.items() if c.get(key) %}<{{ tag }} class="{{ cls }}" data-who-variant="{{ w }}"{% if w %} hidden{% endif %}>{{ c[key] }}</{{ tag }}>{% endfor -%}
+{%- endmacro %}
+
+{#- How Up for grabs is ordered: two links, so the order is in the address and survives a reload. board.js
+   re-sorts the list in place on a click instead of following the link. #}
+{% macro order_switch(order) -%}
+<div class="order-switch" role="group" aria-label="Order Up for grabs">
+  <a href="{{ url_for('index') }}#grabs"{% if order != 'newest' %} aria-current="true"{% endif %} title="The issues with the latest activity first">Recently updated</a>
+  <a href="{{ url_for('index', order='newest') }}#grabs"{% if order == 'newest' %} aria-current="true"{% endif %} title="The issues opened most recently first">Recently opened</a>
+</div>
+{%- endmacro %}

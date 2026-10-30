@@ -1,0 +1,34 @@
+# The settings every test runs with (tests/conftest.py points POMODO_CONFIG here). A fictional team; the zones are
+# picked for the clock tests: Rome is an hour ahead of London on both sides of the October clock change.
+title = "Pomodo"
+repo = "test-org/test-repo"
+
+[time]
+zone = "Europe/London"
+zone_label = "UK"
+work_start = 9
+work_end = 18
+
+[labels]
+chore = "todo"
+tracker = "tracker"
+verified = "human-verified"
+priority = "priority"
+priority_title = "Top priority"
+nice = "nice-to-have"
+milestone = "v1"
+
+[[team]]
+login = "ada-demo"
+name = "Ada"
+zone = "Europe/London"
+
+[[team]]
+login = "kofi-demo"
+name = "Kofi"
+zone = "Europe/Rome"
+
+[[team]]
+login = "mei-demo"
+name = "Mei"
+zone = "Asia/Singapore"

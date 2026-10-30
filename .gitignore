@@ -1,0 +1,13 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# A saved GitHub read (real issue content) and local secrets. pomodo.toml is NOT ignored: teams commit it,
+# and it holds no secrets.
+dev/
+.env
+.env.*
+
+.DS_Store

@@ -1,0 +1,58 @@
+{% from "_macros.html" import pomo, favicons, fonts -%}
+{#- Every page someone sees before the board: sign in, sign-in not set up, sign-in failed, not on this team.
+    Open to anyone, so it names no repo and no team. -#}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<title>{{ 'Not on this team' if kind == 'not_team' else 'Sign in' }} · {{ settings.title }}</title>
+{{ favicons() }}
+{{ fonts() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='board.css') }}">
+</head>
+<body class="error-page">
+<div class="atmos" aria-hidden="true"><div class="mesh"></div></div>
+<main class="error-main wrap">
+  <div class="card error-card">
+    {%- if kind == 'login' %}
+    {{ pomo('happy', 'error-pomo') }}
+    <p class="signin-kicker">{{ settings.title }}</p>
+    <h1 class="error-title">Hello! Sign in to see the board.</h1>
+    <p class="error-lede">The board is for its team only. GitHub tells it who you are; it asks for nothing else.</p>
+    <div class="hero-ctas">
+      <a class="btn btn--solid" href="{{ url_for('auth.login_github') }}"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> Sign in with GitHub</a>
+    </div>
+    {%- elif kind == 'setup' %}
+    {{ pomo('sleepy', 'error-pomo') }}
+    <h1 class="error-title">Sign-in isn't set up yet.</h1>
+    <p class="error-lede">The board signs people in with a GitHub OAuth app, and this copy doesn't have one.</p>
+    <p class="error-msg">Set <code>GITHUB_CLIENT_ID</code> and <code>GITHUB_CLIENT_SECRET</code> to the app's client id
+      and secret, then restart the board.</p>
+    {%- if local %}
+    <p class="error-msg">On a local copy you can skip it: start the board with <code>DEV_USER=&lt;your GitHub login&gt;</code>.</p>
+    {%- endif %}
+    {%- elif kind == 'not_team' %}
+    {{ pomo('worried', 'error-pomo') }}
+    <h1 class="error-title">You're not on this team.</h1>
+    <p class="error-lede">You're signed in to GitHub as <strong>{{ login }}</strong>, and that login isn't on this
+      board's team list.</p>
+    <p class="error-msg">Ask whoever runs the board to add you. Wrong account? Sign out here, sign out of GitHub too,
+      then sign in again.</p>
+    <form class="hero-ctas" method="post" action="{{ url_for('auth.logout') }}">
+      <button type="submit" class="btn btn--solid">Sign out</button>
+    </form>
+    {%- else %}
+    {{ pomo('worried', 'error-pomo') }}
+    <h1 class="error-title">That sign-in didn't work.</h1>
+    <p class="error-lede">{{ why }}</p>
+    <div class="hero-ctas">
+      <a class="btn btn--solid" href="{{ url_for('auth.login') }}">Try again</a>
+    </div>
+    {%- endif %}
+  </div>
+</main>
+</body>
+</html>

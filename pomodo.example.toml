@@ -1,0 +1,35 @@
+# Pomodo's settings. Copy this file to pomodo.toml (or point POMODO_CONFIG at your copy) and fill in your team.
+title = "Pomodo"
+repo = "your-org/your-repo"
+
+[time]
+zone = "Europe/London"   # the board's day: Today, Yesterday, the calendar
+zone_label = "UK"        # how the page names that clock ("UK time")
+work_start = 9           # after-hours starts before this hour ...
+work_end = 18            # ... and from this hour, Monday to Friday, on each person's own clock
+
+[labels]
+chore = "todo"                 # small admin jobs: the Chores card
+tracker = "tracker"            # a checklist of other issues: a progress card
+verified = "human-verified"    # "Checked in the app" badge
+priority = "priority"          # the top card: work that comes first
+priority_title = "Top priority"
+nice = "nice-to-have"
+milestone = ""                 # optional: a label whose closed/total shows as a stat; "" hides it
+
+[[team]]                       # 1 to ~5 people; order is card order
+login = "ada-demo"
+name = "Ada"
+zone = "Europe/London"
+# id = 1234567                 # recommended: the "id" at https://api.github.com/users/<login>, so a renamed login
+                               # passed on to someone else can't sign in as Ada
+
+[[team]]
+login = "kofi-demo"
+name = "Kofi"
+zone = "Africa/Accra"
+
+[[team]]
+login = "mei-demo"
+name = "Mei"
+zone = "Asia/Singapore"

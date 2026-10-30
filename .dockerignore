@@ -1,0 +1,13 @@
+# Keep these out of the build context. pomodo.toml must stay IN: the image reads your team and repo from it.
+.git/
+.venv/
+dev/
+tests/
+docs/
+scripts/
+.pytest_cache/
+__pycache__/
+*.pyc
+.env
+.env.*
+.DS_Store
