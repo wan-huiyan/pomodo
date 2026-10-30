@@ -52,13 +52,20 @@
     toastTimer = setTimeout(function () { toast.hidden = true; }, bad ? 7000 : 4000);
   }
 
+  // The GitHub read this page shows (see initLive). A change made here adopts the board's new one, so the page
+  // never offers to show the reader their own click.
+  var version = null, clicks = 0;
+
   // POST JSON to the board; resolves with the reply, or fails with the server's own words.
   function post(url, body) {
+    clicks += 1;  // counted when sent and again when answered, so a poll out at any point in between is ignored
     return fetch(url, {
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
     }).then(function (r) {
+      clicks += 1;
       return r.json().catch(function () { return {}; }).then(function (d) {
+        if (d && d.version) version = d.version;
         if (!r.ok) { var err = new Error(d.error || "HTTP " + r.status); err.reply = d; throw err; }
         return d;
       });
@@ -707,9 +714,45 @@
     });
   }
 
+  /* ---------- Board updated: ask every minute whether GitHub has changed since this page was drawn ---------- */
+  function initLive() {
+    var box = doc.querySelector(".updated");
+    version = doc.body.getAttribute("data-version");
+    if (!box || !version || !window.fetch) return;
+    var asking = false;
+    function check() {
+      // Not while the tab is hidden, and not again once the pill is up.
+      if (asking || doc.hidden || box.firstChild) return;
+      asking = true;
+      var at = clicks;  // a change made here while this is out may be newer than its answer: ask again next time
+      fetch("/api/version", { credentials: "same-origin", cache: "no-store" }).then(function (r) {
+        return r.ok ? r.json() : null;
+      }).then(function (d) {
+        if (clicks !== at) return;
+        if (d && d.version && d.version !== version) offer();
+      }).catch(function () {
+        // Offline, or the sign-in ran out (the board answers 401): say nothing, ask again later.
+      }).then(function () { asking = false; });
+    }
+    function offer() {
+      var btn = doc.createElement("button");
+      btn.type = "button";
+      btn.className = "updated-btn";
+      btn.innerHTML = '<span class="dot" aria-hidden="true"></span>Board updated <span class="updated-go">Show it</span>';
+      btn.addEventListener("click", function () {
+        btn.disabled = true;
+        location.reload();
+      });
+      box.appendChild(btn);
+    }
+    setInterval(check, 60000);
+    doc.addEventListener("visibilitychange", check);
+  }
+
+
   function start() {
     // Each enhancement is optional (the page is complete without it), so one failing must not stop the rest.
-    [initChips, initOrder, initTake, initCheck, initDone, initCalendar, initNav, initSpotlight, initGlide, initMotion].forEach(function (init) {
+    [initChips, initOrder, initTake, initCheck, initDone, initCalendar, initNav, initSpotlight, initGlide, initMotion, initLive].forEach(function (init) {
       try { init(); } catch (e) { if (window.console) console.error(e); }
     });
   }

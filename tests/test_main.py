@@ -205,8 +205,8 @@ def test_a_page_opened_at_a_section_lands_there_and_only_link_clicks_glide():
 
 
 def test_the_footer_says_when_github_is_read_again(monkeypatch):
-    """The board reads GitHub on the first visit after the copy is 5 minutes old, and that visit still shows the
-    old copy while the new read runs. "Refreshes every 5 minutes" promised more than that."""
+    """The board reads GitHub once the copy is 2 minutes old, and the visit that starts the read still shows the old
+    copy. An open page asks every minute (/api/version), so the read happens while the board is open."""
     t, spawned = [0.0], []
     monkeypatch.setattr(main, "cache", Cache(_raw, ttl=300, clock=lambda: t[0], spawn=spawned.append))
     monkeypatch.setattr(main, "datetime", type("D", (), {
@@ -215,12 +215,12 @@ def test_the_footer_says_when_github_is_read_again(monkeypatch):
     c = main.app.test_client()
     sign_in(c, "ada-demo")
     fresh = c.get("/").get_data(as_text=True)
-    assert "The first visit after 5&nbsp;minutes starts a new read." in fresh and "Refreshes every" not in fresh
+    assert "Read again every 2&nbsp;minutes while the board is open" in fresh and "Refreshes every" not in fresh
     t[0] = 480
     old = c.get("/").get_data(as_text=True)
     assert len(spawned) == 1  # this visit started the read, and still shows the copy from 8 minutes ago
-    assert "8 minutes ago" in old and "A newer read is on its way: reload in a minute to see it." in old
-    assert "The first visit after" not in old
+    assert "8 minutes ago" in old and 'A newer read is on its way: a "Board updated" button appears' in old
+    assert "Read again every" not in old
 
 
 def _freeze(monkeypatch, iso):

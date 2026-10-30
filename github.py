@@ -195,6 +195,7 @@ class Cache:
         self._loader, self._ttl, self._clock = loader, ttl, clock
         self._spawn = spawn or (lambda fn: threading.Thread(target=fn, name="github-refresh", daemon=True).start())
         self._lock = threading.Lock()   # guards the fields below
+        self._read = threading.Condition(self._lock)  # told when a refresh ends
         self._first = threading.Lock()  # one first read at a time
         self._data, self._fetched_at, self._error = None, None, None
         self._next_try, self._refreshing, self._attempts = 0.0, False, 0
@@ -228,6 +229,7 @@ class Cache:
                 self._next_try = started + self._ttl if error is None else self._clock() + min(self.RETRY_AFTER_ERROR, self._ttl)
                 self._refreshing = False
                 self._attempts += 1
+                self._read.notify_all()
 
     def edit(self, fn):
         """Apply fn to the cached read, so a change the board just made shows before the next refresh.
@@ -246,6 +248,16 @@ class Cache:
             fn(data)
         except Exception:  # a change that no longer fits the read must not break the board
             log.exception("Could not apply a board change to the GitHub read")
+
+    def read(self, fn):
+        """fn(data) under the lock, so a change the board is making can't alter the read halfway through."""
+        with self._lock:
+            return fn(self._data)
+
+    def wait(self, timeout):
+        """Block until no refresh is running, or timeout seconds pass. True if none is running now."""
+        with self._lock:
+            return self._read.wait_for(lambda: not self._refreshing, timeout)
 
     def get(self):
         """Return (data, fetched_at, error). Raises GitHubError only when there has never been a good read."""

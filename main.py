@@ -1,4 +1,6 @@
 """The Pomodo board: one page and one JSON endpoint, both read from GitHub through a short cache."""
+import hashlib
+import json
 import logging
 import os
 import threading
@@ -14,7 +16,8 @@ import demo
 from auth import local_copy
 
 REPO = CONFIG.repo  # owner/name, from pomodo.toml
-CACHE_SECONDS = int(os.environ.get("CACHE_SECONDS", "300"))
+CACHE_SECONDS = int(os.environ.get("CACHE_SECONDS", "120"))
+VERSION_WAIT = 20  # seconds /api/version holds a poll open for a GitHub read under way (gunicorn times out at 60)
 NOTES_MAX = 1000  # characters of notes on a "Checked in the app" tick; board.js caps its box at the same length
 
 CSP = "; ".join([
@@ -101,11 +104,29 @@ def avatar_for(board, login):
     return ""
 
 
+# What "Board updated" means: a change of status, not every edit. updatedAt, comments and avatars are left out, so
+# GitHub's own copy of a change made on the board (which also moves updatedAt) keeps the version the page adopted.
+STATUS_FIELDS = ("number", "title", "state", "stateReason", "closedAt", "mergedAt", "isDraft", "reviewDecision")
+
+
+def fingerprint(raw):
+    """A short name for the status of everything on the board: the same status always gets the same one."""
+    status = [[kind] + [n.get(f) for f in STATUS_FIELDS]
+              + [sorted(a["login"] for a in n["assignees"]["nodes"]), sorted(l["name"] for l in n["labels"]["nodes"])]
+              for kind in ("issues", "pullRequests") for n in sorted(raw[kind], key=lambda n: n["number"])]
+    return hashlib.sha256(json.dumps(status, separators=(",", ":")).encode()).hexdigest()[:16]
+
+
+def _version_now():
+    return cache.read(fingerprint)
+
+
 def current_board(viewer=None, order="updated"):
     raw, fetched_at, error = cache.get()
     now = datetime.now(timezone.utc)
     board = build_board(raw, now, order=order)
     board.update(repo=REPO, repo_url=f"https://github.com/{REPO}", error=error,
+                 version=fingerprint(raw),  # the read this page is drawn from
                  viewer=None,
                  refresh_minutes=max(1, CACHE_SECONDS // 60),
                  refreshing=error is None and now.timestamp() - fetched_at >= CACHE_SECONDS,  # this visit's read is under way
@@ -152,6 +173,18 @@ def index():
     except GitHubError as e:
         return render_template("error.html", message=str(e), repo=REPO), 503
     return render_template("board.html", board=board)
+
+
+@app.get("/api/version")
+def version():
+    """Which GitHub read the board has now. The page asks every minute and offers a redraw when it differs."""
+    try:
+        cache.get()  # starts a read in the background when the copy is old
+        # Hold the request open while that read runs: some hosts (Cloud Run) give it CPU only while a request is open.
+        cache.wait(VERSION_WAIT)
+    except GitHubError as e:
+        return jsonify(error=str(e)), 503
+    return jsonify(version=_version_now())
 
 
 @app.get("/api/board.json")
@@ -211,7 +244,7 @@ def take_issue(number):
         return jsonify(error=str(e)), 502
     _mark(number, login, assigned)
     log.info("%s %s on #%d", "Assigned" if assigned else "Unassigned", login, number)
-    return jsonify(number=number, assigned=assigned, assignees=logins)
+    return jsonify(number=number, assigned=assigned, assignees=logins, version=_version_now())
 
 
 def checked_comment(name, checked, notes, now):
@@ -270,7 +303,7 @@ def check_issue(number):
     if not (finished or has):  # a label put on a not-planned issue by mistake can still be taken off
         return jsonify(error=f"#{number} is not a finished issue or a merged pull request on the board."), 404
     if has == checked:  # a double click or a second tab: nothing to change, and no second comment
-        return jsonify(number=number, checked=checked, changed=False)
+        return jsonify(number=number, checked=checked, changed=False, version=_version_now())
     comment = checked_comment(PEOPLE.get(login, login), checked, notes, datetime.now(timezone.utc))
     if not local_copy():  # a local copy never writes to GitHub
         token = os.environ.get("GITHUB_TOKEN", "")
@@ -289,11 +322,11 @@ def check_issue(number):
             log.warning("Labelled #%d but could not comment: %s", number, e)
             return jsonify(error=f"The label is {'on' if checked else 'off'}, but the comment did not post ({e}). "
                                  f"Say who {'checked and what they saw' if checked else 'unticked it'} on GitHub.",
-                           checked=checked), 502  # board.js shows the label as it now is
+                           checked=checked, version=_version_now()), 502  # board.js shows the label as it now is
     else:
         _relabel(number, checked)
     log.info("%s #%d as checked in the app, by %s", "Marked" if checked else "Unmarked", number, login)
-    return jsonify(number=number, checked=checked, changed=True)
+    return jsonify(number=number, checked=checked, changed=True, version=_version_now())
 
 
 @app.get("/healthz")

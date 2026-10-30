@@ -51,7 +51,7 @@ def test_tick_labels_the_issue_and_says_who_checked_and_what_they_saw(app):
     client, calls, _ = app
     r = client.post("/api/issues/121/checked", headers=JSON,
                     json={"checked": True, "notes": "On dev: the result stayed.\nAfter a refresh too. "})
-    assert r.status_code == 200 and r.get_json() == {"number": 121, "checked": True, "changed": True}
+    assert r.status_code == 200 and {k: v for k, v in r.get_json().items() if k != "version"} == {"number": 121, "checked": True, "changed": True}
     assert calls[0] == ("label", 121, "human-verified", True)
     kind, number, body = calls[1]
     today = datetime.now(main.BOARD_TZ)

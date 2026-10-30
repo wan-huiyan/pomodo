@@ -23,7 +23,7 @@
 <script src="{{ url_for('static', filename='sparkle/' ~ f ~ '.js') }}" defer></script>
 {%- endfor %}
 </head>
-<body>
+<body data-version="{{ board.version }}">
 <a class="skip" href="#priority">Skip to the {{ s.priority.title|lower }} work</a>
 <div class="atmos" aria-hidden="true"><div class="mesh"></div></div>
 
@@ -85,8 +85,8 @@
 
   <section id="priority" class="chapter chapter--first wrap" aria-label="{{ s.priority.title }} work and numbers">
     <p class="fetched"><span class="dot{{ ' dot--warn' if board.error }}" aria-hidden="true"></span><span>Read from GitHub <time datetime="{{ board.fetched_at }}">{{ board.fetched_seconds_ago|since }}</time>{{ ', may be out of date' if board.error }}.
-      {%- if board.refreshing %} A newer read is on its way: reload in a minute to see it.
-      {%- elif not board.error %} The first visit after {{ board.refresh_minutes }}&nbsp;minute{{ '' if board.refresh_minutes == 1 else 's' }} starts a new read.{% endif %}</span></p>
+      {%- if board.refreshing %} A newer read is on its way: a "Board updated" button appears when it lands.
+      {%- elif not board.error %} Read again every {{ board.refresh_minutes }}&nbsp;minute{{ '' if board.refresh_minutes == 1 else 's' }} while the board is open; a "Board updated" button appears when something changed.{% endif %}</span></p>
     <div class="bento">
 
       {%- set r = s.priority -%}
@@ -407,6 +407,7 @@
   </section>
 
 </main>
+<div class="updated" role="status" aria-live="polite"></div>
 <div class="toast" role="status" aria-live="polite" hidden></div>
 <div class="stp-mascot" aria-hidden="true" hidden>{{ pomo('happy') }}{{ pomo('joy') }}</div>
 

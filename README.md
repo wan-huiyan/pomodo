@@ -94,7 +94,7 @@ An OAuth app has one callback URL. If you also want to run against your real rep
 | `PUBLIC_URL` | Yes when deployed | The address people open, with `https://` and no trailing slash. It builds the callback address and decides whether the cookie is HTTPS-only (it is, unless this starts with `http://`). |
 | `POMODO_PRODUCTION` | Yes on any host except Cloud Run | Set to `1`. It switches off the `DEV_USER` bypass, so nobody can sign in without GitHub. Cloud Run sets `K_SERVICE` itself, which does the same. |
 | `POMODO_CONFIG` | No | Path to the settings file. Default: `pomodo.toml` next to the code. |
-| `CACHE_SECONDS` | No | How long a read of GitHub is reused before a refresh starts. Default `300` (5 minutes). |
+| `CACHE_SECONDS` | No | How long a read of GitHub is reused before a refresh starts. Default `120` (2 minutes). |
 | `PORT` | No | The port gunicorn listens on in the container. The Dockerfile sets `8080`. The local `flask run` uses `-p` instead. |
 | `DEMO` | No | `1` shows made-up data and never calls GitHub. For trying it out. |
 | `DEV_FIXTURE` | No | Path to a saved GitHub read to show instead of calling GitHub. |
@@ -174,7 +174,7 @@ python3 -c 'import secrets; print(secrets.token_hex(32), end="")' | gcloud secre
 gcloud run deploy pomodo --source . --project <project> --region <region> --allow-unauthenticated \
   --set-secrets GITHUB_TOKEN=pomodo-github-token:latest,GITHUB_CLIENT_SECRET=pomodo-oauth-secret:latest,SECRET_KEY=pomodo-secret-key:latest \
   --set-env-vars GITHUB_CLIENT_ID=<client id>,PUBLIC_URL=https://<your address> \
-  --memory 512Mi --max-instances 2
+  --memory 512Mi --max-instances 1
 ```
 
 Cloud Run addresses look like `https://pomodo-<project number>.<region>.run.app` (check with `gcloud run services describe pomodo --project <project> --region <region> --format 'value(status.url)'`), so you can make the OAuth app before the first deploy. Use that address as `PUBLIC_URL` and in the OAuth app's two URLs. `.gcloudignore` leaves out tests, docs, the virtual environment and `dev/`, and keeps `pomodo.toml`. To see what would be uploaded: `gcloud meta list-files-for-upload .`
@@ -183,7 +183,15 @@ To replace the token when it expires, run the `scripts/load-token.sh` line again
 
 ### Slow first visit after a start
 
-Once the board has a read of GitHub, a page never waits for GitHub: a read older than `CACHE_SECONDS` is shown at once and refreshed in the background. Only the **first visit after the app starts** waits for the read, which can take several seconds for a big repo. On Cloud Run the app starts that read while it boots, which shortens the wait. On other hosts it begins with the first visit. Each running copy of the app keeps its own read.
+Once the board has a read of GitHub, a page never waits for GitHub: a read older than `CACHE_SECONDS` is shown at once and refreshed in the background. Only the **first visit after the app starts** waits for the read, which can take several seconds for a big repo. On Cloud Run the app starts that read while it boots, which shortens the wait. On other hosts it begins with the first visit.
+
+### "Board updated"
+
+An open page asks `/api/version` every minute while its tab is visible (and right away when you come back to the tab). The answer is a short fingerprint of each issue's and pull request's status: state, title, assignees, labels, review, closed or merged. Comments and update times are left out. When it differs from the one the page was drawn from, a **Board updated · Show it** button appears under the nav; the page never redraws itself under you. That request also keeps the board's GitHub read going, and it stays open for up to 20 seconds while a read runs, because some hosts (Cloud Run) give the app CPU only while a request is open. So while anyone has the board open, what it shows is at most about `CACHE_SECONDS` plus a minute old.
+
+A change you make on the page ("It's mine!", "Checked in the app") gives the page the new version, so it never offers to show you your own click. If your click and someone else's change land in the same minute, theirs stays hidden until the next change. Showing the update reloads the page: the browser keeps your scroll position, but a person chip or a picked calendar day goes back to the default.
+
+Each running copy of the app keeps its own read, so two copies could answer differently and the button could flicker. Run one copy (`--max-instances 1` on Cloud Run); its 8 threads serve a small team easily.
 
 On Cloud Run, a refresh only gets CPU while a request is being served, so it may finish during the next few visits. Two options remove the wait, and both cost money: `--min-instances 1` keeps one copy running, and `--no-cpu-throttling` lets the refresh run between visits.
 
@@ -201,7 +209,7 @@ When a person has checked a fix in the running app and seen the difference on sc
 The one source of truth is the `verified` label (default `human-verified`) on the GitHub issue. A merged pull request that closes no issue can carry it too; on a pull request that closes issues, tick the issues instead.
 
 - **On the board**, each finished issue in Recently done (and each merged pull request row with no issue lines under it) offers "Checked in the app?". With a mouse it shows only on the line you point at. It opens a box for optional notes (where you checked and what you saw, up to 1,000 characters; an @name notifies that person). "Mark as checked" adds the label and posts a comment giving your name, the date and the notes. Pressing a badge unticks it, after a confirm: the label comes off and the board posts a comment "Unticked by NAME on <title>". Earlier comments stay.
-- **On GitHub**, add the label by hand and comment with who checked, where, when and what they saw. The badge appears after the board's next read of GitHub (the first visit after `CACHE_SECONDS`; reload once more if it is not there yet).
+- **On GitHub**, add the label by hand and comment with who checked, where, when and what they saw. The badge appears after the board's next read of GitHub (within about `CACHE_SECONDS` while the board is open), and a "Board updated" button then offers to show it.
 - **The endpoint** is `POST /api/issues/<number>/checked` with JSON `{"checked": true, "notes": "..."}` or `{"checked": false}`, with the same checks as the assignee endpoint. Asking for the state an issue already has writes nothing. Two people ticking the same issue at the same moment, through two running copies of the app, could still post two comments.
 
 ## How "Recently done" works

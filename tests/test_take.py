@@ -37,7 +37,7 @@ def app(monkeypatch):
 def test_tick_assigns_on_github_and_the_board_shows_it_at_once(app):
     client, calls, _ = app
     r = client.post("/api/issues/2/assignee", json={"assigned": True}, headers={"Sec-Fetch-Site": "same-origin"})
-    assert r.status_code == 200 and r.get_json() == {"number": 2, "assigned": True, "assignees": ["ada-demo"]}
+    assert r.status_code == 200 and {k: v for k, v in r.get_json().items() if k != "version"} == {"number": 2, "assigned": True, "assignees": ["ada-demo"]}
     assert calls == [(2, "ada-demo", True)]
     board = main.current_board("ada-demo")
     mine = next(p for p in board["people"] if p["login"] == "ada-demo")["items"]

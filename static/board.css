@@ -629,6 +629,19 @@ a.card:hover, .person:hover { transform: translateY(-4px); box-shadow: var(--sha
   background: var(--text); color: var(--bg); font-weight: 600; box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
 }
 .toast[hidden] { display: none; }
+/* Board updated: full width, so the pill keeps one line on a phone; only the button takes clicks */
+.updated { position: fixed; left: 0; right: 0; top: 84px; z-index: 60; display: flex; justify-content: center; pointer-events: none; }
+.updated-btn {
+  display: inline-flex; align-items: center; gap: 10px; padding: 10px 8px 10px 16px; border: 0; border-radius: 999px;
+  background: var(--text); color: var(--bg); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .25); pointer-events: auto;
+}
+.updated-go { padding: 4px 12px; border-radius: 999px; background: var(--accent); color: var(--on-accent); }
+.updated-btn:hover .updated-go { filter: brightness(1.08); }
+.updated-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.updated-btn:disabled { cursor: progress; opacity: .7; }
+@media (prefers-reduced-motion: no-preference) { .updated-btn { animation: updated-in .35s ease-out; } }
+@keyframes updated-in { from { opacity: 0; transform: translateY(-8px); } }
 .toast--bad { background: var(--accent); color: var(--on-accent); }
 .tag--priority { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 .tag--merged { background: var(--sage-soft); color: var(--sage-ink); border-color: transparent; }
