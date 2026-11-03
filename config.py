@@ -23,7 +23,10 @@ _LABELS = {"chore": "todo", "tracker": "tracker", "verified": "human-verified", 
 # Recently done shows main work unless "Everything" is picked: these labels and title starts are left out, as are the
 # chore and tracker labels.
 _DONE = {"hide_labels": ["documentation"], "hide_titles": []}
-_PERSON = {"login": None, "name": None, "zone": None, "id": None}  # name defaults to the login, zone to the board's
+_AUTH = {"mode": "github"}  # "iap": behind Google's Identity-Aware Proxy, people named by email instead of GitHub sign-in
+_AUTH_MODES = ("github", "iap")
+_PERSON = {"login": None, "name": None, "zone": None, "id": None, "email": None}  # name defaults to the login, zone to the board's
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class ConfigError(ValueError):
@@ -36,6 +39,7 @@ class Person:
     name: str
     zone: str  # an IANA zone name: their own clock, for "after hours"
     id: int | None = None  # GitHub's account number: a login can pass to someone else, the number never does
+    email: str | None = None  # lower-cased; how IAP names them (required when auth_mode is "iap")
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,7 @@ class Config:
     team: tuple          # of Person, in card order
     hide_labels: tuple = ()  # Recently done leaves these out until "Everything" is picked ...
     hide_titles: tuple = ()  # ... and titles starting with these (ignoring case)
+    auth_mode: str = "github"  # or "iap": who is signed in comes from Google's Identity-Aware Proxy
 
 
 def _table(data, allowed, where):
@@ -110,7 +115,7 @@ def _hour(data, key, default, where):
 
 def parse(data):
     """A Config from pomodo.toml's contents (a dict, as tomllib reads it). Raises ConfigError naming the bad key."""
-    _table(data, [*_TOP, "time", "labels", "done", "team"], "")
+    _table(data, [*_TOP, "time", "labels", "done", "auth", "team"], "")
     title = _text(data, "title", _TOP["title"], "title")
     repo = _text(data, "repo", None, "repo")
     if not _REPO.match(repo) or repo.split("/")[1] in (".", ".."):
@@ -130,10 +135,15 @@ def parse(data):
     hide_labels = _texts(done, "hide_labels", _DONE["hide_labels"], "done.hide_labels")
     hide_titles = _texts(done, "hide_titles", _DONE["hide_titles"], "done.hide_titles")
 
+    auth = _table(data.get("auth", {}), _AUTH, "auth")
+    mode = auth.get("mode", _AUTH["mode"])
+    if mode not in _AUTH_MODES:
+        raise ConfigError(f"auth.mode = {mode!r} must be \"github\" or \"iap\"")
+
     people = data.get("team")
     if not isinstance(people, list) or not people:
         raise ConfigError("team needs at least one person: add a [[team]] table with a login")
-    team, seen = [], set()
+    team, seen, emails = [], set(), set()
     for n, p in enumerate(people):
         where = f"team[{n}]"
         _table(p, _PERSON, where)
@@ -147,10 +157,19 @@ def parse(data):
         if gid is not None and (type(gid) is not int or gid <= 0):
             raise ConfigError(f"{where}.id = {gid!r} must be the person's GitHub account number, as in "
                               f"https://api.github.com/users/{login}")
+        email = None
+        if "email" in p or mode == "iap":
+            email = _text(p, "email", None, f"{where}.email").lower()  # Google ignores case in an address
+            if not _EMAIL.match(email):
+                raise ConfigError(f"{where}.email = \"{email}\" is not an email address")
+            if email in emails:
+                raise ConfigError(f"{where}.email = \"{email}\" is already on the team")
+            emails.add(email)
         team.append(Person(login=login, name=_text(p, "name", login, f"{where}.name"),
-                           zone=_zone(p.get("zone", zone), f"{where}.zone"), id=gid))
+                           zone=_zone(p.get("zone", zone), f"{where}.zone"), id=gid, email=email))
     return Config(title=title, repo=repo, zone=zone, zone_label=zone_label, work_start=start, work_end=end,
-                  labels=labels, team=tuple(team), hide_labels=hide_labels, hide_titles=hide_titles)
+                  labels=labels, team=tuple(team), hide_labels=hide_labels, hide_titles=hide_titles,
+                  auth_mode=mode)
 
 
 def load(path=None):

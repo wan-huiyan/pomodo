@@ -434,10 +434,16 @@
       </ul>
       <p class="muted">{{ board.repo }}. Read from GitHub {{ board.fetched_seconds_ago|since }}{{ ', may be out of date' if board.error }}.</p>
       {%- if board.viewer %}
+      {%- if settings.auth_mode == 'iap' %}
+      <div class="signout">
+        <span class="muted">Signed in as <strong>{{ board.viewer.name }}</strong>{% if board.viewer.name != board.viewer.login %} ({{ board.viewer.login }}){% endif %}.</span>
+      </div>
+      {%- else %}
       <form class="signout" method="post" action="{{ url_for('auth.logout') }}">
         <span class="muted">Signed in as <strong>{{ board.viewer.name }}</strong>{% if board.viewer.name != board.viewer.login %} ({{ board.viewer.login }}){% endif %}.</span>
         <button type="submit" class="btn-soft">Sign out</button>
       </form>
+      {%- endif %}
       {%- endif %}
     </div>
   </div>

@@ -34,6 +34,19 @@
     {%- if local %}
     <p class="error-msg">On a local copy you can skip it: start the board with <code>DEV_USER=&lt;your GitHub login&gt;</code>.</p>
     {%- endif %}
+    {%- elif kind == 'iap' %}
+    {{ pomo('sleepy', 'error-pomo') }}
+    <h1 class="error-title">Open the board through Google sign-in.</h1>
+    <p class="error-lede">This board only accepts people Google's Identity-Aware Proxy has let in, and this request
+      did not come through it.</p>
+    <p class="error-msg">Use the board's normal address and sign in with your Google account.</p>
+    {%- elif kind == 'not_team' and settings.auth_mode == 'iap' %}
+    {{ pomo('worried', 'error-pomo') }}
+    <h1 class="error-title">You're not on this team.</h1>
+    <p class="error-lede">You're signed in with Google as <strong>{{ login }}</strong>, and that email isn't on this
+      board's team list.</p>
+    <p class="error-msg">Ask whoever runs the board to add it. Wrong account? Switch to the right Google account and
+      open the board again.</p>
     {%- elif kind == 'not_team' %}
     {{ pomo('worried', 'error-pomo') }}
     <h1 class="error-title">You're not on this team.</h1>
