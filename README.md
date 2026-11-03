@@ -108,6 +108,8 @@ An unknown key or a bad value stops the app at start-up with a message naming th
 | `[labels] milestone` | Optional. A label whose closed/total count shows as a stat at the top. Leave `""` for none. |
 | `[done] hide_labels` | Recently done shows main work by default; "Everything" adds work with these labels, as well as chores and trackers. Default `["documentation"]`. |
 | `[done] hide_titles` | Also left out of main work: titles starting with any of these, ignoring case, such as `["Docs:"]`. Default none. |
+| `[read] recent_only` | `false` (the default) reads every issue and pull request ever filed. `true` reads only the open ones plus those closed or merged since the first day of last month on the board's clock (what Recently done's calendar shows). Use it on a repo with thousands of items, where the full read is too slow. A tracker still counts every issue it lists (the few the read lacks are fetched by number), and the milestone and priority counts still use all closed issues. An issue closed inside the window by a pull request merged before it shows as "closed this" on its own row, without naming the pull request. |
+| `[grabs] labels` | Limits Up for grabs to open unassigned issues carrying at least one of these labels, such as `["todo"]`. Default `[]`: all open unassigned issues. Person cards and the top card are not limited. |
 | `[auth] mode` | `"github"` (the default: people sign in with GitHub) or `"iap"` (Google's Identity-Aware Proxy lets them in; see "Behind Google IAP instead of GitHub sign-in"). |
 | `[[team]]` | One table per person, in the order of their cards. At least one; 2 to 5 works best. |
 | `[[team]] login` | **Required.** Their GitHub login. Logins ignore upper and lower case, and each may appear once. |

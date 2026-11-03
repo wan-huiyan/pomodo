@@ -24,6 +24,7 @@ HIDDEN_LABELS = {MILESTONE_LABEL, PRIORITY_LABEL, NICE_LABEL, ROBOT_LABEL} - {""
 # Recently done shows main work unless "Everything" is picked: not docs, chores, trackers or what the settings add.
 MINOR_LABELS = set(CONFIG.hide_labels) | {TODO_LABEL, TRACKER_LABEL}
 MINOR_TITLES = tuple(t.lower() for t in CONFIG.hide_titles)
+GRAB_LABELS = set(CONFIG.grab_labels)  # Up for grabs keeps only issues with one of these; none set keeps all
 HIDDEN_WORK = "docs and chores"  # how a day with only left-out work names it
 GROUPS = [("priority", PRIORITY_TITLE), ("nice", "Nice to have"), (None, "Not sorted yet")]
 RECENT_DAYS = 14
@@ -464,6 +465,24 @@ def done_calendar(done_days, now, first_day, hidden_days=()):
             "months": months, "days": panels}
 
 
+def calendar_start(now):
+    """The first moment of last month on the board's clock: where Recently done's calendar begins. A read that keeps only
+    recent work (CONFIG.recent_only) must reach back at least this far."""
+    today = now.astimezone(BOARD_TZ).date()
+    last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    return datetime.combine(last_month, time(0), BOARD_TZ)
+
+
+def _label_stat(issues, label, raw):
+    """{"label", "total", "closed"} for the issues with a label. A recent-only read holds just the open ones and the
+    recently closed, so it takes the closed count from GitHub's own total for the label (counted over the label alone)."""
+    closed = sum(1 for i in issues if i["state"] != "open")
+    if "since" in raw and label in raw.get("labelCounts", {}):
+        closed = raw["labelCounts"][label]
+        return {"label": label, "total": len(issues) - sum(1 for i in issues if i["state"] != "open") + closed, "closed": closed}
+    return {"label": label, "total": len(issues), "closed": closed}
+
+
 def build_board(raw, now, order="updated", done="main"):
     """done "all" shows every finished row in Recently done; any other value shows main work only (is_main_work).
     order "newest" lists Up for grabs by the date each issue was opened, newest first. Every other list keeps
@@ -492,8 +511,13 @@ def build_board(raw, now, order="updated", done="main"):
 
     milestone = [i for i in items if i["kind"] == "issue" and MILESTONE_LABEL and labelled(i, MILESTONE_LABEL)]
     priority = [i for i in items if i["kind"] == "issue" and i["priority"] == "priority"]
-    unclaimed = (newest_first if newest else recent_first)([i for i in open_issues if not ours(i)])
-    states = {i["number"]: i["state"] for i in items}
+    grabbable = [i for i in open_issues if not ours(i) and (not GRAB_LABELS or GRAB_LABELS & {l["name"] for l in i["labels"]})]
+    unclaimed = (newest_first if newest else recent_first)(grabbable)
+    # A read of recent work only (raw has "since") leaves out old closed issues: a tracker's listed issues the read lacks
+    # come with their states, and a label's closed count comes from GitHub's own total.
+    recent = "since" in raw
+    states = {int(n): s.lower() for n, s in raw.get("trackedStates", {}).items()}
+    states.update({i["number"]: i["state"] for i in items})
     trackers = []
     for t in (i for i in open_items if i["tracks"] is not None):
         listed = [n for n in t["tracks"] if n in states]  # one that GitHub didn't return can't be counted
@@ -501,9 +525,8 @@ def build_board(raw, now, order="updated", done="main"):
                          "closed": sum(1 for n in listed if states[n] != "open")})  # however it was closed
     _, finished = recently_done(items, cutoff, now)  # the hero stat keeps its 14 days
     today = now.astimezone(BOARD_TZ).date()
-    last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
     # recently_done compares closed_at as text, so the window start must be UTC isoformat like the stored values.
-    window = datetime.combine(last_month, time(0), BOARD_TZ).astimezone(timezone.utc).isoformat()
+    window = calendar_start(now).astimezone(timezone.utc).isoformat()
     done_days, _ = recently_done(items, window, now)
     scope = "all" if done == "all" else "main"
     shown_days, hidden_days = done_days, []
@@ -513,6 +536,8 @@ def build_board(raw, now, order="updated", done="main"):
         hidden_days = [{**d, "rows": [r for r in d["rows"] if not is_main_work(r["item"])]} for d, _ in split]
     first_day = min([today] + [datetime.fromisoformat(i["closed_at"]).astimezone(BOARD_TZ).date()
                                for i in items if i["state"] != "open" and i["closed_at"]])
+    if recent:  # nothing older was read, so no day since the calendar began is "before" the history
+        first_day = min(first_day, calendar_start(now).date())
     done_recent = sorted((i for i in items if i["state"] != "open" and i["closed_at"] and i["closed_at"] >= cutoff),
                          key=lambda i: i["closed_at"], reverse=True)
     return {
@@ -540,10 +565,8 @@ def build_board(raw, now, order="updated", done="main"):
             "recent_days": RECENT_DAYS,
             "finished": finished,
             # None when no milestone label is set: the page then leaves the stat out.
-            "milestone": {"label": MILESTONE_LABEL, "total": len(milestone),
-                          "closed": sum(1 for i in milestone if i["state"] != "open")} if MILESTONE_LABEL else None,
-            "priority": {"label": PRIORITY_LABEL, "title": PRIORITY_TITLE, "total": len(priority),
-                         "closed": sum(1 for i in priority if i["state"] != "open")},
+            "milestone": _label_stat(milestone, MILESTONE_LABEL, raw) if MILESTONE_LABEL else None,
+            "priority": {"title": PRIORITY_TITLE, **_label_stat(priority, PRIORITY_LABEL, raw)},
         },
         # The words the page needs from the settings, read here so they follow the module's constants.
         "team_names": team_names(PEOPLE.values()),

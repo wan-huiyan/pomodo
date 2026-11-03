@@ -23,6 +23,10 @@ _LABELS = {"chore": "todo", "tracker": "tracker", "verified": "human-verified", 
 # Recently done shows main work unless "Everything" is picked: these labels and title starts are left out, as are the
 # chore and tracker labels.
 _DONE = {"hide_labels": ["documentation"], "hide_titles": []}
+# The read is everything by default. recent_only reads open work and what finished since last month began: far less on a big repo.
+_READ = {"recent_only": False}
+# Up for grabs lists every open unassigned issue by default; with labels, only those carrying at least one of them.
+_GRABS = {"labels": []}
 _AUTH = {"mode": "github"}  # "iap": behind Google's Identity-Aware Proxy, people named by email instead of GitHub sign-in
 _AUTH_MODES = ("github", "iap")
 _PERSON = {"login": None, "name": None, "zone": None, "id": None, "email": None}  # name defaults to the login, zone to the board's
@@ -67,6 +71,8 @@ class Config:
     hide_labels: tuple = ()  # Recently done leaves these out until "Everything" is picked ...
     hide_titles: tuple = ()  # ... and titles starting with these (ignoring case)
     auth_mode: str = "github"  # or "iap": who is signed in comes from Google's Identity-Aware Proxy
+    recent_only: bool = False  # read open work plus what finished since last month began, not the whole history
+    grab_labels: tuple = ()  # Up for grabs keeps only issues with one of these labels; empty keeps all
 
 
 def _table(data, allowed, where):
@@ -115,7 +121,7 @@ def _hour(data, key, default, where):
 
 def parse(data):
     """A Config from pomodo.toml's contents (a dict, as tomllib reads it). Raises ConfigError naming the bad key."""
-    _table(data, [*_TOP, "time", "labels", "done", "auth", "team"], "")
+    _table(data, [*_TOP, "time", "labels", "done", "read", "grabs", "auth", "team"], "")
     title = _text(data, "title", _TOP["title"], "title")
     repo = _text(data, "repo", None, "repo")
     if not _REPO.match(repo) or repo.split("/")[1] in (".", ".."):
@@ -134,6 +140,12 @@ def parse(data):
     done = _table(data.get("done", {}), _DONE, "done")
     hide_labels = _texts(done, "hide_labels", _DONE["hide_labels"], "done.hide_labels")
     hide_titles = _texts(done, "hide_titles", _DONE["hide_titles"], "done.hide_titles")
+
+    read = _table(data.get("read", {}), _READ, "read")
+    recent_only = read.get("recent_only", _READ["recent_only"])
+    if not isinstance(recent_only, bool):
+        raise ConfigError("read.recent_only must be true or false")
+    grab_labels = _texts(_table(data.get("grabs", {}), _GRABS, "grabs"), "labels", _GRABS["labels"], "grabs.labels")
 
     auth = _table(data.get("auth", {}), _AUTH, "auth")
     mode = auth.get("mode", _AUTH["mode"])
@@ -169,7 +181,7 @@ def parse(data):
                            zone=_zone(p.get("zone", zone), f"{where}.zone"), id=gid, email=email))
     return Config(title=title, repo=repo, zone=zone, zone_label=zone_label, work_start=start, work_end=end,
                   labels=labels, team=tuple(team), hide_labels=hide_labels, hide_titles=hide_titles,
-                  auth_mode=mode)
+                  auth_mode=mode, recent_only=recent_only, grab_labels=grab_labels)
 
 
 def load(path=None):
