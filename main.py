@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from flask import Flask, g, jsonify, redirect, render_template, request, url_for
 
-from board import BOARD_TZ, NOT_DONE, PEOPLE, VERIFIED_LABEL, build_board
+from board import BOARD_TZ, NOT_DONE, PEOPLE, VERIFIED_LABEL, build_board, calendar_start
 from github import Cache, GitHubError, add_comment, fetch_repo, load_fixture, set_assignee, set_label
 from config import CONFIG
 import auth
@@ -55,6 +55,10 @@ def _load():
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
         raise GitHubError("GITHUB_TOKEN is not set")
+    if CONFIG.recent_only:  # open work and what the calendar shows, not the whole history
+        since = calendar_start(datetime.now(timezone.utc)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return fetch_repo(token, REPO, since=since, tracker=CONFIG.labels.tracker,
+                          counted=[CONFIG.labels.milestone, CONFIG.labels.priority])
     return fetch_repo(token, REPO)
 
 

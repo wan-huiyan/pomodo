@@ -25,10 +25,17 @@ _COMMON = """
   labels(first: 20) { nodes { name color } }
 """
 
-ISSUES_QUERY = """
-query($owner: String!, $name: String!, $cursor: String) {
+# The page size is a variable so a page GitHub cannot answer in time can be asked again with fewer items.
+ISSUE_PAGE, PULL_PAGE = 50, 25
+MIN_PAGE = 5  # below this a 502 or 504 is an error, not a reason to ask for less
+_PAGE = "first: $first, after: $cursor"
+_OLDEST_FIRST = "orderBy: {field: CREATED_AT, direction: ASC}"
+_NEWEST_UPDATE_FIRST = "orderBy: {field: UPDATED_AT, direction: DESC}"
+
+_ISSUES_QUERY = """
+query($owner: String!, $name: String!, $cursor: String, $first: Int!%%s) {
   repository(owner: $owner, name: $name) {
-    items: issues(first: 50, after: $cursor, orderBy: {field: CREATED_AT, direction: ASC}) {
+    items: issues(%%s) {
       pageInfo { hasNextPage endCursor }
       nodes {
         %s stateReason %s
@@ -39,10 +46,10 @@ query($owner: String!, $name: String!, $cursor: String) {
 }
 """ % (_COMMON, _COMMENTS)
 
-PULLS_QUERY = """
-query($owner: String!, $name: String!, $cursor: String) {
+_PULLS_QUERY = """
+query($owner: String!, $name: String!, $cursor: String, $first: Int!%%s) {
   repository(owner: $owner, name: $name) {
-    items: pullRequests(first: 25, after: $cursor, orderBy: {field: CREATED_AT, direction: ASC}) {
+    items: pullRequests(%%s) {
       pageInfo { hasNextPage endCursor }
       nodes {
         %s isDraft mergedAt reviewDecision additions deletions headRefName baseRefName
@@ -59,9 +66,23 @@ query($owner: String!, $name: String!, $cursor: String) {
 }
 """ % (_COMMON, _COMMENTS)
 
+# Everything: the default read.
+ISSUES_QUERY = _ISSUES_QUERY % ("", f"{_PAGE}, {_OLDEST_FIRST}")
+PULLS_QUERY = _PULLS_QUERY % ("", f"{_PAGE}, {_OLDEST_FIRST}")
+# The recent read (see fetch_recent): open issues and pull requests whatever their age, and the ones finished since a date.
+# filterBy since means "updated since", and an issue is updated when it closes, so no closed issue in the window is missed.
+OPEN_ISSUES_QUERY = _ISSUES_QUERY % ("", f"states: OPEN, {_PAGE}, {_OLDEST_FIRST}")
+OPEN_PULLS_QUERY = _PULLS_QUERY % ("", f"states: OPEN, {_PAGE}, {_OLDEST_FIRST}")
+CLOSED_ISSUES_QUERY = _ISSUES_QUERY % (", $since: DateTime", f"states: CLOSED, filterBy: {{since: $since}}, {_PAGE}, {_NEWEST_UPDATE_FIRST}")
+CLOSED_PULLS_QUERY = _PULLS_QUERY % ("", f"states: [CLOSED, MERGED], {_PAGE}, {_NEWEST_UPDATE_FIRST}")
+
 
 class GitHubError(RuntimeError):
-    """GitHub could not be read. The message never contains the token."""
+    """GitHub could not be read. The message never contains the token. `status` is the HTTP status, when there was one."""
+
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 def _post(session, token, query, variables):
@@ -71,7 +92,7 @@ def _post(session, token, query, variables):
     except requests.RequestException as e:
         raise GitHubError(f"Could not reach GitHub ({type(e).__name__})") from None
     if r.status_code != 200:
-        raise GitHubError(f"GitHub returned HTTP {r.status_code}")
+        raise GitHubError(f"GitHub returned HTTP {r.status_code}", r.status_code)
     try:
         data = r.json()
     except ValueError:
@@ -85,30 +106,105 @@ def _post(session, token, query, variables):
     return data["data"]
 
 
-def _all_items(session, token, query, owner, name):
+def _all_items(session, token, query, owner, name, size, extra=None, until=None):
+    """Every node of one query, page by page. A 502 or 504 (GitHub gave up on a heavy page) is tried again with half
+    as many items, down to MIN_PAGE, and the pages after it stay that small. With `until` (newest-update-first
+    queries), stop once a page holds a node last updated before that time: nothing later can be newer."""
     items, cursor = [], None
     while True:
-        data = _post(session, token, query, {"owner": owner, "name": name, "cursor": cursor})
+        try:
+            data = _post(session, token, query, {"owner": owner, "name": name, "cursor": cursor, "first": size, **(extra or {})})
+        except GitHubError as e:
+            if e.status not in (502, 504) or size <= MIN_PAGE:
+                raise
+            size = max(MIN_PAGE, size // 2)
+            log.warning("GitHub gave up on a page (HTTP %s); trying again with %d items", e.status, size)
+            continue
         if data.get("repository") is None:
             raise GitHubError(f"The token cannot see {owner}/{name}")
         try:
             page = data["repository"]["items"]
             items += page["nodes"]
             more, cursor = page["pageInfo"]["hasNextPage"], page["pageInfo"]["endCursor"]
+            if until and any(n["updatedAt"] < until for n in page["nodes"]):
+                more = False
         except (KeyError, TypeError):
             raise GitHubError("GitHub sent a reply in an unexpected shape") from None
         if not more:
             return items
 
 
-def fetch_repo(token, repo, session=None):
-    """Return {"issues": [...], "pullRequests": [...]} exactly as GitHub sends the nodes."""
+def fetch_repo(token, repo, session=None, since=None, tracker=None, counted=()):
+    """Return {"issues": [...], "pullRequests": [...]} exactly as GitHub sends the nodes.
+
+    With `since` (an ISO time such as 2026-09-01T00:00:00Z) it reads only the open issues and pull requests plus those
+    finished on or after that time, and the result also carries what the board needs about the rest: see fetch_recent.
+    """
     owner, name = repo.split("/", 1)
     session = session or requests.Session()
+    if since:
+        return fetch_recent(token, owner, name, session, since, tracker, counted)
     return {
-        "issues": _all_items(session, token, ISSUES_QUERY, owner, name),
-        "pullRequests": _all_items(session, token, PULLS_QUERY, owner, name),
+        "issues": _all_items(session, token, ISSUES_QUERY, owner, name, ISSUE_PAGE),
+        "pullRequests": _all_items(session, token, PULLS_QUERY, owner, name, PULL_PAGE),
     }
+
+
+def fetch_recent(token, owner, name, session, since, tracker, counted):
+    """The recent read: open work plus what was finished since `since`, in far fewer pages on a big repo.
+
+    Three things on the board look at more than that, so the read carries them too:
+    - "trackedStates": the state of each issue a tracker lists that the read does not hold, asked for by number in one
+      query, so a tracker's progress counts the issues it lists whatever their age.
+    - "labelCounts": how many issues with each label in `counted` (the milestone and priority labels) are closed.
+    - "since": so the calendar can tell a quiet day from a day before the read starts.
+    """
+    def read(query, size, **kw):
+        return _all_items(session, token, query, owner, name, size, **kw)
+
+    issues = read(OPEN_ISSUES_QUERY, ISSUE_PAGE)
+    issues += [n for n in read(CLOSED_ISSUES_QUERY, ISSUE_PAGE, extra={"since": since}) if (n.get("closedAt") or "") >= since]
+    pulls = read(OPEN_PULLS_QUERY, PULL_PAGE)
+    pulls += [n for n in read(CLOSED_PULLS_QUERY, PULL_PAGE, until=since) if (n.get("mergedAt") or n.get("closedAt") or "") >= since]
+    raw = {"issues": issues, "pullRequests": pulls, "since": since,
+           "trackedStates": _tracked_states(session, token, owner, name, issues, pulls, tracker),
+           "labelCounts": _label_counts(session, token, owner, name, counted)}
+    return raw
+
+
+def _tracked_states(session, token, owner, name, issues, pulls, tracker):
+    """{number: state} for issues and pull requests the open trackers list but the read does not hold."""
+    from board import tracked_numbers  # the board decides what a tracker lists; asked here, once, for the missing ones
+    if not tracker:
+        return {}
+    have = {n["number"] for n in issues + pulls}
+    wanted = sorted({k for n in issues if n["state"] == "OPEN" and tracker in {l["name"] for l in n["labels"]["nodes"]}
+                     for k in tracked_numbers(n)} - have)
+    states = {}
+    for i in range(0, len(wanted), 100):
+        chunk = wanted[i:i + 100]
+        fields = " ".join(f"n{k}: issueOrPullRequest(number: {int(k)}) {{ ... on Issue {{ state }} ... on PullRequest {{ state }} }}"
+                          for k in chunk)
+        data = _post(session, token, "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }"
+                     % fields, {"owner": owner, "name": name})
+        found = data.get("repository") or {}
+        states.update({k: found[f"n{k}"]["state"] for k in chunk if isinstance(found.get(f"n{k}"), dict) and found[f"n{k}"].get("state")})
+    return states
+
+
+def _label_counts(session, token, owner, name, labels):
+    """{label: closed issue count} for each label, from GitHub's own totals."""
+    labels = [l for l in dict.fromkeys(labels) if l]
+    if not labels:
+        return {}
+    fields = " ".join(f"c{i}: issues(labels: [{json.dumps(l)}], states: CLOSED) {{ totalCount }}" for i, l in enumerate(labels))
+    data = _post(session, token, "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }"
+                 % fields, {"owner": owner, "name": name})
+    found = data.get("repository") or {}
+    try:
+        return {l: found[f"c{i}"]["totalCount"] for i, l in enumerate(labels)}
+    except (KeyError, TypeError):
+        raise GitHubError("GitHub sent a reply in an unexpected shape") from None
 
 
 def _rest(session, token, method, url, body=None):

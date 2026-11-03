@@ -27,6 +27,12 @@ milestone = ""                 # optional: a label whose closed/total shows as a
 hide_labels = ["documentation"]
 hide_titles = []               # title starts, ignoring case, such as ["Docs:", "Board:"]
 
+# [read]
+# recent_only = true           # on a big repo: read open work plus what finished since last month began, not all history
+
+# [grabs]
+# labels = ["todo"]            # limit Up for grabs to open unassigned issues with one of these labels; [] keeps all
+
 [[team]]                       # 1 to ~5 people; order is card order
 login = "ada-demo"
 name = "Ada"
