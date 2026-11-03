@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Every module main.py imports, then the settings. pomodo*.toml matches pomodo.example.toml (always there) and your
 # own pomodo.toml (copied in when it exists, so the image knows your team and repo). It holds no secrets: the token,
 # the OAuth secret and SECRET_KEY are passed in as environment variables when the container runs, never baked in.
-COPY main.py board.py github.py auth.py config.py demo.py pomodo*.toml ./
+COPY main.py board.py github.py auth.py identity.py config.py demo.py pomodo*.toml ./
 COPY templates ./templates
 COPY static ./static
 RUN useradd --system --create-home app

@@ -91,7 +91,12 @@ def test_the_path_comes_from_pomodo_config(tmp_path, monkeypatch):
     (('login = "kofi-demo"', 'login = "ADA-demo"'), 'team[1].login = "ADA-demo" is already on the team'),
     (('login = "kofi-demo"', 'login = "kofi demo"'), "team[1].login"),
     (("work_end = 18", "work_end = 18\nwork_ned = 17"), "unknown key time.work_ned"),
-    (('name = "Kofi"', 'name = "Kofi"\nemail = "k@example.com"'), "unknown key team[1].email"),
+    (('name = "Kofi"', 'name = "Kofi"\nmail = "k@example.com"'), "unknown key team[1].mail"),
+    (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[auth]\nmode = "oauth"'), "auth.mode = 'oauth' must be"),
+    (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[auth]\nmode = true'), "auth.mode"),
+    (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[auth]\nmodes = "iap"'), "unknown key auth.modes"),
+    (('name = "Kofi"', 'name = "Kofi"\nemail = "kofi"'), 'team[1].email = "kofi" is not an email address'),
+    (('name = "Kofi"', 'name = "Kofi"\nemail = ""'), "team[1].email must be a non-empty string"),
     (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[labels]\npriority = ""'), "labels.priority"),
     (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[done]\nhide_labels = "documentation"'), "done.hide_labels"),
     (('repo = "acme/widgets"', 'repo = "acme/widgets"\n[done]\nhide_titles = ["Docs:", " "]'), "done.hide_titles"),
@@ -153,3 +158,30 @@ def test_recently_done_hides_what_the_settings_name(tmp_path):
                                      'hide_titles = [" Board: "]', 1))
     assert (c.hide_labels, c.hide_titles) == ((), ("Board:",))
     assert board.MINOR_LABELS == {"documentation", "todo", "tracker"}  # the test settings: the default plus chores, trackers
+
+
+IAP = GOOD.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\n[auth]\nmode = "iap"', 1)
+IAP_TEAM = IAP.replace('name = "Ada"', 'name = "Ada"\nemail = "Ada@Example.com"').replace(
+    'name = "Kofi"', 'name = "Kofi"\nemail = "kofi@example.com"')
+
+
+def test_the_default_mode_is_github_and_emails_are_optional(tmp_path):
+    c = _load(tmp_path, GOOD)
+    assert c.auth_mode == "github" and [p.email for p in c.team] == [None, None]
+    c = _load(tmp_path, GOOD.replace('name = "Ada"', 'name = "Ada"\nemail = "ADA@example.com"'))
+    assert [p.email for p in c.team] == ["ada@example.com", None]  # kept, lower-cased, even when not needed
+
+
+def test_iap_mode_needs_every_person_to_have_an_email(tmp_path):
+    c = _load(tmp_path, IAP_TEAM)
+    assert c.auth_mode == "iap" and [p.email for p in c.team] == ["ada@example.com", "kofi@example.com"]
+    with pytest.raises(ConfigError, match=r"team\[0\]\.email is missing"):
+        _load(tmp_path, IAP)
+    with pytest.raises(ConfigError, match=r"team\[1\]\.email is missing"):
+        _load(tmp_path, IAP.replace('name = "Ada"', 'name = "Ada"\nemail = "ada@example.com"'))
+
+
+def test_emails_must_be_unique_ignoring_case(tmp_path):
+    text = IAP_TEAM.replace("kofi@example.com", "ADA@example.com")
+    with pytest.raises(ConfigError, match=r'team\[1\]\.email = "ada@example.com" is already on the team'):
+        _load(tmp_path, text)

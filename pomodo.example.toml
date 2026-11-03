@@ -2,6 +2,9 @@
 title = "Pomodo"
 repo = "your-org/your-repo"
 
+# [auth]
+# mode = "iap"             # behind Google's Identity-Aware Proxy instead of GitHub sign-in: every [[team]] needs an email
+
 [time]
 zone = "Europe/London"   # the board's day: Today, Yesterday, the calendar
 zone_label = "UK"        # how the page names that clock ("UK time")
@@ -28,6 +31,7 @@ hide_titles = []               # title starts, ignoring case, such as ["Docs:", 
 login = "ada-demo"
 name = "Ada"
 zone = "Europe/London"
+# email = "ada@example.com"    # their Google account; required when [auth] mode = "iap"
 # id = 1234567                 # recommended: the "id" at https://api.github.com/users/<login>, so a renamed login
                                # passed on to someone else can't sign in as Ada
 

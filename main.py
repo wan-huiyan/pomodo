@@ -148,6 +148,8 @@ def gate():
     if not login:
         if api:
             return jsonify(error="Sign in to use the board."), 401
+        if auth.iap():  # nothing to sign in to here: the request did not come through IAP
+            return render_template("signin.html", kind="iap"), 401
         return redirect(url_for("auth.login"))
     g.login = auth.team_login(login)
     if not g.login:

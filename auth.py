@@ -1,4 +1,6 @@
 """Who is signed in: a GitHub login, kept in Flask's signed session cookie after a GitHub OAuth sign-in.
+(With auth.mode = "iap" in pomodo.toml there is no sign-in here: identity.py reads who Google's Identity-Aware Proxy
+let in, and that email is looked up in the team's emails.)
 
 The sign-in is GitHub's OAuth app flow, done by hand: a random state kept in the session, the code exchanged on the
 server, no scopes asked for, and the login read from GitHub's /user. The user's token is used for that one read and
@@ -17,6 +19,7 @@ import requests
 from flask import Blueprint, redirect, render_template, request, session, url_for
 
 from config import CONFIG
+import identity
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +31,7 @@ SESSION_DAYS = 30
 _LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")  # what GitHub allows in a login
 _TEAM = {p.login.lower(): p.login for p in CONFIG.team}  # GitHub logins ignore case; the config's spelling is kept
 _IDS = {p.login: p.id for p in CONFIG.team}
+_EMAILS = {p.email: p.login for p in CONFIG.team if p.email}  # emails are lower-cased in the config
 MIN_SECRET = 32  # characters; a short key can be guessed offline from any cookie the board hands out
 
 bp = Blueprint("auth", __name__)
@@ -41,6 +45,11 @@ def local_copy():
 def production():
     """True where the board is deployed: Cloud Run sets K_SERVICE; any other host can set POMODO_PRODUCTION."""
     return bool(os.environ.get("K_SERVICE") or os.environ.get("POMODO_PRODUCTION"))
+
+
+def iap():
+    """True when pomodo.toml says people come in through Google's Identity-Aware Proxy instead of GitHub sign-in."""
+    return CONFIG.auth_mode == "iap"
 
 
 def team_login(login):
@@ -57,8 +66,15 @@ def dev_user():
 
 
 def current_login():
-    """The signed-in GitHub login as GitHub spells it (on the team or not), or None."""
-    login = dev_user() or session.get("login")
+    """The signed-in GitHub login as GitHub spells it (on the team or not), or None. Behind IAP the login of the
+    team member with the verified email; an email that is not on the team comes back as itself, for the "not on this
+    team" page."""
+    login = dev_user()
+    if not login and iap():
+        email = identity.viewer_email(request.headers)
+        login = _EMAILS.get(email) or email
+    elif not login:
+        login = session.get("login")
     return login if isinstance(login, str) and login else None
 
 
@@ -86,7 +102,14 @@ def cookie_secure():
 
 
 def configure(app):
-    """Session cookie settings and the sign-in routes. Raises at start-up when SECRET_KEY is missing."""
+    """Session cookie settings and the sign-in routes. Raises at start-up when SECRET_KEY is missing. Behind IAP
+    there is no session and no sign-in route, and a deployed board needs IAP_AUDIENCE instead."""
+    if iap():
+        if production() and not os.environ.get("IAP_AUDIENCE"):
+            raise RuntimeError("IAP_AUDIENCE is not set. With auth.mode = \"iap\" a deployed board needs it to check "
+                               "who IAP let in: the value is in the Google Cloud console under Security, Identity-Aware "
+                               "Proxy, the service's three dots, Get JWT audience code (see the README).")
+        return
     app.secret_key = secret_key()
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",  # Lax, so GitHub's redirect back
                       SESSION_COOKIE_SECURE=cookie_secure(),                       # carries the state

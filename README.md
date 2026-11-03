@@ -108,11 +108,13 @@ An unknown key or a bad value stops the app at start-up with a message naming th
 | `[labels] milestone` | Optional. A label whose closed/total count shows as a stat at the top. Leave `""` for none. |
 | `[done] hide_labels` | Recently done shows main work by default; "Everything" adds work with these labels, as well as chores and trackers. Default `["documentation"]`. |
 | `[done] hide_titles` | Also left out of main work: titles starting with any of these, ignoring case, such as `["Docs:"]`. Default none. |
+| `[auth] mode` | `"github"` (the default: people sign in with GitHub) or `"iap"` (Google's Identity-Aware Proxy lets them in; see "Behind Google IAP instead of GitHub sign-in"). |
 | `[[team]]` | One table per person, in the order of their cards. At least one; 2 to 5 works best. |
 | `[[team]] login` | **Required.** Their GitHub login. Logins ignore upper and lower case, and each may appear once. |
 | `[[team]] name` | The name shown on the board. Default: the login. |
 | `[[team]] zone` | Their own clock, used to decide whether work they finished was after hours. Default: the board's zone. |
 | `[[team]] id` | Recommended. Their GitHub account number, from `https://api.github.com/users/<login>` (the `"id"` field). With it, only that exact account can sign in as them: if they ever rename or delete their account, whoever registers the old login next is refused. Without it, the login alone decides. |
+| `[[team]] email` | Their Google account email. **Required for everyone when `[auth] mode = "iap"`**, otherwise optional. Compared ignoring upper and lower case; each may appear once. |
 
 The app reads `pomodo.toml` next to the code. Set `POMODO_CONFIG` to use a file somewhere else.
 
@@ -153,6 +155,7 @@ An OAuth app has one callback URL. If you also want to run against your real rep
 | `SECRET_KEY` | Yes, except with `DEMO` or `DEV_FIXTURE` | A random string of at least 32 characters that signs the session cookie; the board refuses to start with a shorter one. Make one with `python -c "import secrets; print(secrets.token_hex(32))"` and keep it the same across restarts. |
 | `PUBLIC_URL` | Yes when deployed | The address people open, with `https://` and no trailing slash. It builds the callback address and decides whether the cookie is HTTPS-only (it is, unless this starts with `http://`). |
 | `POMODO_PRODUCTION` | Yes on any host except Cloud Run | Set to `1`. It switches off the `DEV_USER` bypass, so nobody can sign in without GitHub. Cloud Run sets `K_SERVICE` itself, which does the same. |
+| `IAP_AUDIENCE` | Yes when deployed with `[auth] mode = "iap"` | The audience code of the IAP-protected service. The board refuses to start without it. See "Behind Google IAP instead of GitHub sign-in". |
 | `POMODO_CONFIG` | No | Path to the settings file. Default: `pomodo.toml` next to the code. |
 | `CACHE_SECONDS` | No | How long a read of GitHub is reused before a refresh starts. Default `120` (2 minutes). |
 | `PORT` | No | The port gunicorn listens on in the container. The Dockerfile sets `8080`. The local `flask run` uses `-p` instead. |
@@ -240,6 +243,47 @@ gcloud run deploy pomodo --source . --project <project> --region <region> --allo
 Cloud Run addresses look like `https://pomodo-<project number>.<region>.run.app` (check with `gcloud run services describe pomodo --project <project> --region <region> --format 'value(status.url)'`), so you can make the OAuth app before the first deploy. Use that address as `PUBLIC_URL` and in the OAuth app's two URLs. `.gcloudignore` leaves out tests, docs, the virtual environment and `dev/`, and keeps `pomodo.toml`. To see what would be uploaded: `gcloud meta list-files-for-upload .`
 
 To replace the token when it expires, run the `scripts/load-token.sh` line again, then redeploy (a running instance keeps the version it started with).
+
+### Behind Google IAP instead of GitHub sign-in
+
+If your Google Cloud project only allows people from your own organisation, the public address and GitHub sign-in above will not work. Instead, put the board behind Google's Identity-Aware Proxy (IAP). Google signs people in and tells the board who they are. You need no GitHub OAuth app, no `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SECRET_KEY` or `PUBLIC_URL`. You still need `GITHUB_TOKEN`.
+
+Two settings in `pomodo.toml`:
+
+```toml
+[auth]
+mode = "iap"
+
+[[team]]
+login = "ada-demo"
+email = "ada@example.com"   # the Google account Ada signs in with
+```
+
+Every person needs an `email`. The board trusts only the signed header IAP adds to each request, checking its signature, its audience and its issuer. The plain `X-Goog-Authenticated-User-Email` header is ignored. Someone IAP lets in whose email is not in `pomodo.toml` sees the "not on this team" page. There is no sign-in button and no sign-out button, and the GitHub sign-in addresses do not exist. Change who is on the team by editing `pomodo.toml` and redeploying.
+
+The second setting is the environment variable `IAP_AUDIENCE`, which tells the board what the signed header must be for. A deployed board (Cloud Run, or `POMODO_PRODUCTION` set) will not start without it. Find the value once IAP is on: in the Google Cloud console, Security, Identity-Aware Proxy, find the service, click its three dots, Get JWT audience code. It looks like `/projects/<project number>/locations/<region>/services/<service>`. You can build it yourself, since the project number and region are known before the first deploy.
+
+On Cloud Run, replace `<project>`, `<region>` and `<audience>`:
+
+```bash
+# 1. The token goes in Secret Manager. (scripts/load-token.sh asks for it without showing it.)
+scripts/load-token.sh pomodo-github-token <project>
+
+# 2. Deploy from this folder, closed to the public. (The runtime account needs the Secret Manager Secret Accessor role.)
+gcloud run deploy pomodo --source . --project <project> --region <region> --no-allow-unauthenticated \
+  --set-secrets GITHUB_TOKEN=pomodo-github-token:latest \
+  --set-env-vars IAP_AUDIENCE=<audience> \
+  --memory 512Mi --max-instances 1
+
+# 3. Turn IAP on, and let browsers reach the service address.
+gcloud beta run services update pomodo --project <project> --region <region> --iap --ingress=all
+
+# 4. Let each person through IAP (repeat for every email in pomodo.toml).
+gcloud beta iap web add-iam-policy-binding --project <project> --resource-type=cloud-run \
+  --service=pomodo --region=<region> --member="user:ada@example.com" --role=roles/iap.httpsResourceAccessor
+```
+
+IAP's own access list and the `[[team]]` emails are separate checks: IAP decides who may reach the board, `pomodo.toml` decides who is on the team. Keep them the same. IAP changes can take several minutes to apply. People outside your organisation can only get through if the service's "Out-of-org user access" setting is on. `gcloud beta` is needed because IAP for Cloud Run is a beta feature; check `gcloud beta run services update --help` if a flag has changed. Trying it on your own computer works as before: `DEMO=1` or `DEV_FIXTURE` with `DEV_USER=<login>` signs you in as that person, and never where the board is deployed.
 
 ### Slow first visit after a start
 
