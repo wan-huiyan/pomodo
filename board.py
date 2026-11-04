@@ -2,6 +2,7 @@
 import re
 from calendar import monthrange
 from datetime import datetime, time, timedelta, timezone
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import nh3
@@ -44,6 +45,9 @@ _CHECKBOX = re.compile(r"<input[^>]*task-list-item-checkbox[^>]*>")
 _HEX = re.compile(r"^[0-9a-fA-F]{6}$")
 _TASK_START = re.compile(r'<li class="task-list-item[^"]*">')
 _TASK_END = re.compile(r"<li[\s>]|</li>")  # a line ends where it closes or where a nested line starts
+# "## In plain words" in a description: the few words the details open on. It runs to the next heading.
+_PLAIN = re.compile(r"<h([1-3])>\s*In plain words:?\s*</h\1>(.*?)(?=<h[1-3]>|$)", re.I | re.S)
+_BLOCKS = ("blockquote", "details", "div", "ul", "ol", "table")
 _ITEM_LINK = re.compile(r'(?:data-url|href)="(https://github\.com/[^"]+?)/(?:issues|pull)/(\d+)(?:[#?][^"]*)?"')
 
 
@@ -54,6 +58,26 @@ def clean_html(html):
         tag_attribute_values={"input": {"type": {"checkbox"}}},
         set_tag_attribute_values={"input": {"disabled": "disabled"}, "a": {"target": "_blank"}},
     )
+
+
+def _balanced(fragment):
+    """True when every block the fragment opens it also closes."""
+    return all(len(re.findall(rf"<{t}[\s>]", fragment)) == fragment.count(f"</{t}>") for t in _BLOCKS)
+
+
+def plain_words(html):
+    """(the "In plain words" section, the rest of the description). ("", html) when there is no such section."""
+    m = _PLAIN.search(html)
+    # A heading inside a quote or a folded block would cut that block in two: only one at the top level counts.
+    if not m or not m.group(2).strip() or not (_balanced(html[:m.start()]) and _balanced(m.group(2))):
+        return "", html
+    return m.group(2).strip(), (html[:m.start()] + html[m.end():]).strip()
+
+
+def shot_list(number, names):
+    """An item's screenshots for the page: the board's own address for each, and its name as the alt text."""
+    return [{"url": f"/shots/{number}/{quote(n)}", "alt": re.sub(r"^\d+\s*[-.]?\s*", "", n[:-4]) or n[:-4]}
+            for n in names]
 
 
 def task_counts(html):
@@ -144,6 +168,7 @@ def _item(node, kind, now):
         hidden += max(0, node["reviews"]["totalCount"] - len(node["reviews"]["nodes"]))
     comments.sort(key=lambda c: c["at"] or "")
     done, total = task_counts(node.get("bodyHTML"))
+    plain, body = plain_words(clean_html(node.get("bodyHTML")))
     closed = _when(node.get("mergedAt") or node.get("closedAt"))
     updated = _when(node["updatedAt"])
     labels = [{"name": l["name"], "color": l["color"] if _HEX.match(l["color"] or "") else "888888"}
@@ -167,7 +192,7 @@ def _item(node, kind, now):
         "created_ago": ago(_when(node["createdAt"]), now), "updated_ago": ago(updated, now),
         "updated_at": updated.isoformat(), "closed_at": closed.isoformat() if closed else None,
         "closed_ago": ago(closed, now),
-        "body_html": clean_html(node.get("bodyHTML")), "tasks": {"done": done, "total": total},
+        "plain_html": plain, "body_html": body, "shots": [], "tasks": {"done": done, "total": total},
         "comments": comments, "comments_hidden": hidden,
         # Only this repo's issues: the board matches them by number.
         "closes": [n["number"] for n in node.get("closingIssuesReferences", {}).get("nodes", [])
@@ -490,6 +515,10 @@ def build_board(raw, now, order="updated", done="main"):
     Ties go to the higher number, as when board.js re-sorts Up for grabs in the browser."""
     newest = order == "newest"
     items = [_item(n, "issue", now) for n in raw["issues"]] + [_item(n, "pr", now) for n in raw["pullRequests"]]
+    shots = raw.get("shots") or {}
+    for i in items:  # an agent's annotated screenshots show once it has added the robot-vouched label
+        if i["robot"]:
+            i["shots"] = shot_list(i["number"], shots.get(str(i["number"]), []))
     open_items = [i for i in items if i["state"] == "open"]
     by_update = lambda i: (i["updated_at"], i["number"])  # noqa: E731
     rank = lambda i: [k for k, _ in GROUPS].index(i["priority"])  # noqa: E731

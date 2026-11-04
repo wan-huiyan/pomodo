@@ -1,4 +1,4 @@
-{# Shared pieces for board.html and error.html. Only body_html and comment html are rendered with |safe. #}
+{# Shared pieces for board.html and error.html. Only plain_html, body_html and comment html are rendered with |safe. #}
 
 {% macro pomo(mood='happy', cls='') -%}
 <svg class="pomo pomo--{{ mood }} {{ cls }}" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
@@ -152,6 +152,24 @@
 {%- endif -%}
 {%- endmacro %}
 
+{#- What the details open on: the description's "In plain words" section and, once an agent has vouched for it,
+   its annotated screenshots. Everything else (caller: the description and comments) folds under "More detail".
+   An item with neither opens straight on everything, as before. -#}
+{% macro plain_first(i) -%}
+{%- if i.plain_html or i.shots %}
+        {% if i.plain_html %}<div class="prose plain-words">{{ i.plain_html|safe }}</div>{% endif %}
+        {% if i.shots %}
+        <div class="shots">
+          {% for s in i.shots %}<a class="shot" href="{{ s.url }}" target="_blank" rel="noopener noreferrer" title="Open full size"><img src="{{ s.url }}" alt="{{ s.alt }}" loading="lazy" decoding="async"></a>{% endfor %}
+        </div>
+        {% endif %}
+        <details class="more-detail">
+          <summary><span class="more-detail-btn">More detail<svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></summary>
+          <div class="more-detail-body">{{ caller() }}</div>
+        </details>
+{%- else %}{{ caller() }}{% endif -%}
+{%- endmacro %}
+
 {# The It's mine! button (shown only with JavaScript, to a signed-in person the board knows) assigns or unassigns them on GitHub. #}
 {% macro item(i, variant='row', viewer=none) -%}
 <article class="item item--{{ variant }}" data-labels='{{ i.labels|map(attribute="name")|list|tojson }}'>
@@ -166,7 +184,7 @@
     </div>
     <details class="more">
       <summary>{{ meta(i, variant) }}<span class="more-btn"><span class="more-word">Details</span><svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></summary>
-      <div class="more-body">
+      <div class="more-body">{% call plain_first(i) %}
         <p class="more-by">Opened by {{ i.author.name }} {{ i.created_ago }}.{% if i.url %} <a href="{{ i.url }}" target="_blank" rel="noopener noreferrer">Open on GitHub</a>{% endif %}</p>
         {% if i.body_html.strip() %}<div class="prose">{{ i.body_html|safe }}</div>{% else %}<p class="muted">No description.</p>{% endif %}
         {% if i.comments %}
@@ -186,7 +204,7 @@
         </ol>
         {% endif %}
         {% if i.comments_hidden and i.url %}<a class="more-hidden" href="{{ i.url }}" target="_blank" rel="noopener noreferrer">{{ i.comments_hidden }} more comment{{ '' if i.comments_hidden == 1 else 's' }} on GitHub</a>{% endif %}
-      </div>
+      {% endcall %}</div>
     </details>
   </div>
 </article>

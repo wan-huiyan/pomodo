@@ -1,12 +1,13 @@
 """Made-up GitHub data for DEMO=1, so a new team sees a full board before it has a token.
 
 make_raw returns what github.fetch_repo returns: {"issues": [...], "pullRequests": [...]}, the nodes shaped as GitHub's
-GraphQL sends them. Who does what, and how many days back, is a fixed script; the random seed only varies the minutes.
+GraphQL sends them, plus "shots": the one robot-vouched pull request's annotated screenshot, from demo_shots/. Who does what, and how many days back, is a fixed script; the random seed only varies the minutes.
 So the same `now` always gives the same data, and every time in it is at or before `now`.
 """
 import random
 import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from config import CONFIG
@@ -53,6 +54,13 @@ TRACKED = ("layout", "notif", "dark", "tz", "save")  # what the "Settings page r
 BLURBS = ["Several people have run into this. Worth sorting out soon.", "Came up in this week's meeting.",
           "A customer asked about this twice last month.", "A small change, but it saves a few clicks every day.",
           "To see it: open the page, try it, and watch what happens."]
+# The robot-vouched pull request's description and its annotated screenshot: what Details opens on.
+SPANISH_BODY = ('<h2 dir="auto">In plain words</h2>\n<p dir="auto">The sign-in page now speaks Spanish to people whose '
+                'browser is set to Spanish. Everyone else sees it in English, as before.</p>\n'
+                '<h2 dir="auto">What changed</h2>\n<ul dir="auto">\n<li>A Spanish copy of every line on the sign-in page.</li>\n'
+                '<li>The page picks the language from the browser\'s own setting; there is no switch to find.</li>\n</ul>')
+SHOTS_DIR = Path(__file__).resolve().parent / "demo_shots"
+SHOTS = ["1 Sign-in page in Spanish.png"]
 APPROVALS = ["<p>Looks good to me.</p>", "<p>Nice, thank you. I tried it locally and it works.</p>",
              "<p>Approved. One idea for later, but nothing that blocks this.</p>"]
 
@@ -276,7 +284,7 @@ class _Demo:
                            "comments": [("src/datepicker.js", "<p>This skips days that are hidden. Is that on purpose?</p>")]}])
         at = self.ago(0, rng.randint(13, 22))
         self.add("pr", "Add Spanish translations for the sign-in page", self.ago(rng.randint(3, 6), 2), at, key="pr_spanish",
-                 author=self.outsider, decision="APPROVED", labels=["enhancement", self.labels.robot], size=(rng.randint(30, 90), rng.randint(0, 8)),
+                 author=self.outsider, decision="APPROVED", labels=["enhancement", self.labels.robot], size=(rng.randint(30, 90), rng.randint(0, 8)), body=SPANISH_BODY,
                  reviews=[{"author": team[0], "state": "APPROVED", "at": at,
                            "html": "<p>Thank you, these read well to me.</p>", "comments": []}])
 
@@ -384,7 +392,15 @@ class _Demo:
         self.specs.sort(key=lambda s: s["created"])  # GitHub numbers issues and pull requests in one sequence, oldest first
         number = {s["key"]: i for i, s in enumerate(self.specs, 1)}
         nodes = [(s["kind"], self.node(s, number)) for s in self.specs]
-        return {"issues": [n for kind, n in nodes if kind == "issue"], "pullRequests": [n for kind, n in nodes if kind == "pr"]}
+        return {"issues": [n for kind, n in nodes if kind == "issue"], "pullRequests": [n for kind, n in nodes if kind == "pr"],
+                "shots": {str(number["pr_spanish"]): list(SHOTS)}}  # its number moves with the dates
+
+
+def read_shot(raw, number, name):
+    """A demo screenshot's bytes, or None: only a name the made-up read lists for that number, from demo_shots/."""
+    if name not in raw.get("shots", {}).get(str(number), []):
+        return None
+    return (SHOTS_DIR / name).read_bytes()
 
 
 def make_raw(now, config=CONFIG):

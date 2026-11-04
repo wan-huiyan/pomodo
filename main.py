@@ -6,13 +6,14 @@ import os
 import threading
 from datetime import datetime, timezone
 
-from flask import Flask, g, jsonify, redirect, render_template, request, url_for
+from flask import Flask, abort, g, jsonify, redirect, render_template, request, url_for
 
 from board import BOARD_TZ, NOT_DONE, PEOPLE, VERIFIED_LABEL, build_board, calendar_start
 from github import Cache, GitHubError, add_comment, fetch_repo, load_fixture, set_assignee, set_label
 from config import CONFIG
 import auth
 import demo
+import shots
 from auth import local_copy
 
 REPO = CONFIG.repo  # owner/name, from pomodo.toml
@@ -46,20 +47,29 @@ def _demo_read():
     return _DEMO["raw"]
 
 
+def _demo():
+    """True for DEMO=1 without a saved read: the made-up data, with its own screenshots and never the configured ones."""
+    return local_copy() and not os.environ.get("DEV_FIXTURE")
+
+
 def _load():
     fixture = os.environ.get("DEV_FIXTURE")
     if fixture:
-        return load_fixture(fixture)
-    if local_copy():  # DEMO=1: made-up data only, never the real repo
-        return _demo_read()
-    token = os.environ.get("GITHUB_TOKEN")
-    if not token:
-        raise GitHubError("GITHUB_TOKEN is not set")
-    if CONFIG.recent_only:  # open work and what the calendar shows, not the whole history
-        since = calendar_start(datetime.now(timezone.utc)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        return fetch_repo(token, REPO, since=since, tracker=CONFIG.labels.tracker,
-                          counted=[CONFIG.labels.milestone, CONFIG.labels.priority])
-    return fetch_repo(token, REPO)
+        raw = load_fixture(fixture)
+    elif local_copy():  # DEMO=1: made-up data only, never the real repo
+        return _demo_read()  # it lists its own screenshot
+    else:
+        token = os.environ.get("GITHUB_TOKEN")
+        if not token:
+            raise GitHubError("GITHUB_TOKEN is not set")
+        if CONFIG.recent_only:  # open work and what the calendar shows, not the whole history
+            since = calendar_start(datetime.now(timezone.utc)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            raw = fetch_repo(token, REPO, since=since, tracker=CONFIG.labels.tracker,
+                             counted=[CONFIG.labels.milestone, CONFIG.labels.priority])
+        else:
+            raw = fetch_repo(token, REPO)
+    raw["shots"] = shots.list_shots()  # read with GitHub, so a new screenshot shows after the next read
+    return raw
 
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -168,7 +178,8 @@ def security_headers(resp):
     resp.headers["Content-Security-Policy"] = CSP
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
-    resp.headers["Cache-Control"] = "no-store" if resp.mimetype != "image/svg+xml" else "private, max-age=86400"
+    resp.headers["Cache-Control"] = ("private, max-age=86400" if resp.mimetype == "image/svg+xml"
+                                     else "private, max-age=600" if resp.mimetype == "image/png" else "no-store")
     return resp
 
 
@@ -333,6 +344,19 @@ def check_issue(number):
         _relabel(number, checked)
     log.info("%s #%d as checked in the app, by %s", "Marked" if checked else "Unmarked", number, login)
     return jsonify(number=number, checked=checked, changed=True, version=_version_now())
+
+
+@app.get("/shots/<int:number>/<name>")
+def shot(number, name):
+    """One annotated screenshot of a robot-vouched item. Behind the sign-in gate like the page: the bucket stays private."""
+    try:
+        data = demo.read_shot(_demo_read(), number, name) if _demo() else shots.read_shot(number, name)
+    except Exception as e:
+        log.warning("Could not read screenshot %d/%s: %s", number, name, e)
+        abort(502)
+    if data is None:
+        abort(404)
+    return app.response_class(data, mimetype="image/png")
 
 
 @app.get("/healthz")
