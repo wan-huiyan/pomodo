@@ -19,7 +19,8 @@ _LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 _TOP = {"title": "Pomodo", "repo": None}
 _TIME = {"zone": "UTC", "zone_label": None, "work_start": 9, "work_end": 18}  # zone_label defaults to the zone
 _LABELS = {"chore": "todo", "tracker": "tracker", "verified": "human-verified", "robot": "robot-vouched",
-           "priority": "priority", "priority_title": "Top priority", "nice": "nice-to-have", "milestone": ""}
+           "priority": "priority", "priority_title": "Top priority", "nice": "nice-to-have", "milestone": "",
+           "source_prefix": "from:"}
 # Recently done shows main work unless "Everything" is picked: these labels and title starts are left out, as are the
 # chore and tracker labels.
 _DONE = {"hide_labels": ["documentation"], "hide_titles": []}
@@ -60,6 +61,7 @@ class Labels:
     priority_title: str  # what the page calls that group
     nice: str
     milestone: str       # "" when the board shows no milestone stat
+    source_prefix: str   # labels starting with this say where a fed issue came from: "from:slack" -> a "From Slack" badge
 
 
 @dataclass(frozen=True)

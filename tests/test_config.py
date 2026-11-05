@@ -49,7 +49,8 @@ def test_the_example_file_is_the_plans_shape_with_a_fictional_team():
     assert [(p.login, p.name, p.zone) for p in c.team] == [
         ("ada-demo", "Ada", "Europe/London"), ("kofi-demo", "Kofi", "Africa/Accra"), ("mei-demo", "Mei", "Asia/Singapore")]
     assert c.labels == config.Labels(chore="todo", tracker="tracker", verified="human-verified", robot="robot-vouched",
-                                     priority="priority", priority_title="Top priority", nice="nice-to-have", milestone="")
+                                     priority="priority", priority_title="Top priority", nice="nice-to-have", milestone="",
+                                         source_prefix="from:")
     assert (c.hide_labels, c.hide_titles) == (("documentation",), ())
 
 
@@ -185,3 +186,13 @@ def test_emails_must_be_unique_ignoring_case(tmp_path):
     text = IAP_TEAM.replace("kofi@example.com", "ADA@example.com")
     with pytest.raises(ConfigError, match=r'team\[1\]\.email = "ada@example.com" is already on the team'):
         _load(tmp_path, text)
+
+
+def test_source_prefix_defaults_to_from(tmp_path):
+    assert _load(tmp_path, GOOD).labels.source_prefix == "from:"
+
+
+def test_source_prefix_can_be_changed_but_not_blank(tmp_path):
+    assert _load(tmp_path, GOOD + '\n[labels]\nsource_prefix = "src/"\n').labels.source_prefix == "src/"
+    with pytest.raises(ConfigError, match="labels.source_prefix"):
+        _load(tmp_path, GOOD + '\n[labels]\nsource_prefix = ""\n')

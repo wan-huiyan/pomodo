@@ -155,7 +155,7 @@ def test_the_demo_works_for_any_team_and_any_clock():
     """One person at the far side of the world, other label names, no milestone, and a login that looks like the outsider."""
     config = Config(title="X", repo="o/r", zone="America/Los_Angeles", zone_label="LA", work_start=8, work_end=17,
                     labels=Labels(chore="admin", tracker="list", verified="checked", robot="bot-ok", priority="urgent",
-                                  priority_title="Urgent", nice="later", milestone=""),
+                                  priority_title="Urgent", nice="later", milestone="", source_prefix="from:"),
                     team=(Person(login="Guest-Dev", name="Guest", zone="Pacific/Auckland"),))
     for now in NOWS + [datetime(2026, 10, 28, 3, 0, tzinfo=UTC)]:
         raw = make_raw(now, config)
