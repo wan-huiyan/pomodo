@@ -460,3 +460,13 @@ def test_robot_vouched_shows_a_robot_badge_where_an_agent_checked_it_in_a_browse
     assert row.index("tag--robot") < row.index("tag--checked") and "Robot vouched</span>" in row
     assert '<svg class="robot"' in row  # the drawing, not an emoji
     assert ">robot-vouched<" not in html and ">app-ux<" in html  # a badge, never a raw label chip
+
+
+def test_a_fed_issue_shows_where_it_came_from(client):
+    ago = lambda h: (datetime.now(timezone.utc) - timedelta(hours=h)).isoformat()  # noqa: E731
+    open_one = _node(191, labels=["from:slack"])
+    done_one = _node(192, state="CLOSED", closed=ago(1), labels=["from:meeting"], reason="COMPLETED")
+    html = client(lambda: {"issues": [open_one, done_one], "pullRequests": []}).get("/").get_data(as_text=True)
+    assert html.count('class="tag tag--source"') == 2
+    assert ">From Slack</span>" in html and ">From meeting notes</span>" in html
+    assert ">from:slack<" not in html and ">from:meeting<" not in html  # a badge, never a raw label chip
