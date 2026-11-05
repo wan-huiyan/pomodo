@@ -20,6 +20,7 @@ priority = "priority"          # the top card: work that comes first
 priority_title = "Top priority"
 nice = "nice-to-have"
 milestone = ""                 # optional: a label whose closed/total shows as a stat; "" hides it
+source_prefix = "from:"        # labels like from:slack say where the feeder found a to-do: a "From Slack" badge
 
 [done]
 # Recently done shows main work by default; "Everything" adds what these pick out, plus the chore and tracker labels.

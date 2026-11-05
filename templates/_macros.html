@@ -70,7 +70,7 @@
 
 {% macro labels(i, skip='') -%}
 {%- for l in i.chips if l.name != skip %}<span class="label" style="--lc:#{{ l.color }}">{{ l.name }}</span>{% endfor -%}
-{{ robot_badge(i) }}
+{{ robot_badge(i) }}{{ source_badge(i) }}
 {%- endmacro %}
 
 {#- A little hand-drawn robot: wobbly lines on purpose, in the badge's own colour. #}
@@ -90,6 +90,12 @@
    checked. A person's check is the separate "A human peeked" badge. #}
 {% macro robot_badge(i) -%}
 {%- if i.robot %} <span class="tag tag--robot" title="An agent checked this in a browser and saw it work. The comment on GitHub says what it checked.">{{ robot() }}Robot vouched</span>{% endif -%}
+{%- endmacro %}
+
+{#- Where the feeder found this to-do (a from: label): Slack, Gmail, Calendar, meeting notes or Jira. Details says
+   where exactly, under "Where this came from". #}
+{% macro source_badge(i) -%}
+{%- if i.source %} <span class="tag tag--source" title="Found in {{ i.source.name }} by Pomodo's feeder. Details says where.">From {{ i.source.name }}</span>{% endif -%}
 {%- endmacro %}
 
 {% macro comment_count(i) -%}
@@ -249,11 +255,11 @@
       {%- if i.url %}<a href="{{ i.url }}" target="_blank" rel="noopener noreferrer"><span class="item-num">{{ num }}</span> {{ r.title }}</a>
       {%- else %}<span class="item-num">{{ num }}</span> {{ r.title }}{% endif %}
       {#- A merged pull request is ticked on its own row only when no issue line under it can carry the tick. -#}
-      {{ robot_badge(i) }}{{ checked(i, viewer, r.done and (i.kind == 'issue' or (i.state == 'merged' and not r.fixed))) }} <span class="new-badge" hidden>New</span>
+      {{ robot_badge(i) }}{{ source_badge(i) }}{{ checked(i, viewer, r.done and (i.kind == 'issue' or (i.state == 'merged' and not r.fixed))) }} <span class="new-badge" hidden>New</span>
     </p>
     {%- if r.fixed %}
     <ul class="work-fixed">
-      {%- for j in r.fixed %}<li>Fixes {% if j.url %}<a href="{{ j.url }}" target="_blank" rel="noopener noreferrer">#{{ j.number }}</a>{% else %}#{{ j.number }}{% endif %} {{ j.title }}{{ robot_badge(j) }}{{ checked(j, viewer) }}</li>{% endfor -%}
+      {%- for j in r.fixed %}<li>Fixes {% if j.url %}<a href="{{ j.url }}" target="_blank" rel="noopener noreferrer">#{{ j.number }}</a>{% else %}#{{ j.number }}{% endif %} {{ j.title }}{{ robot_badge(j) }}{{ source_badge(j) }}{{ checked(j, viewer) }}</li>{% endfor -%}
     </ul>
     {%- endif %}
     <p class="work-meta">

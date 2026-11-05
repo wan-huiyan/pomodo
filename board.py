@@ -22,6 +22,8 @@ TRACKER_LABEL = CONFIG.labels.tracker  # a checklist of other issues: shown as a
 VERIFIED_LABEL = CONFIG.labels.verified  # a person checked the fix in the running app: a badge in Recently done
 ROBOT_LABEL = CONFIG.labels.robot  # an agent checked the change in a browser and saw it work: a robot badge
 HIDDEN_LABELS = {MILESTONE_LABEL, PRIORITY_LABEL, NICE_LABEL, ROBOT_LABEL} - {""}  # a tag, group, stat or badge, not a chip
+SOURCE_PREFIX = CONFIG.labels.source_prefix  # "from:slack": the feeder found this to-do in Slack (see feeder/)
+SOURCE_NAMES = {"slack": "Slack", "gmail": "Gmail", "calendar": "Calendar", "meeting": "meeting notes", "jira": "Jira"}
 # Recently done shows main work unless "Everything" is picked: not docs, chores, trackers or what the settings add.
 MINOR_LABELS = set(CONFIG.hide_labels) | {TODO_LABEL, TRACKER_LABEL}
 MINOR_TITLES = tuple(t.lower() for t in CONFIG.hide_titles)
@@ -174,6 +176,7 @@ def _item(node, kind, now):
     labels = [{"name": l["name"], "color": l["color"] if _HEX.match(l["color"] or "") else "888888"}
               for l in node["labels"]["nodes"]]
     names = {l["name"] for l in labels}
+    fed = next((n[len(SOURCE_PREFIX):] for n in sorted(names) if n.startswith(SOURCE_PREFIX) and len(n) > len(SOURCE_PREFIX)), None)
     # To-dos are admin jobs and trackers are lists of other issues: neither has a priority of its own.
     ranked = not names & {TODO_LABEL, TRACKER_LABEL}
     return {
@@ -182,7 +185,8 @@ def _item(node, kind, now):
         "state_reason": (node.get("stateReason") or "").lower() or None,  # completed, not_planned, duplicate
         "author": _person(node.get("author")),
         "assignees": [_person(a) for a in node["assignees"]["nodes"]],
-        "labels": labels, "chips": [l for l in labels if l["name"] not in HIDDEN_LABELS],
+        "labels": labels, "chips": [l for l in labels if l["name"] not in HIDDEN_LABELS and not l["name"].startswith(SOURCE_PREFIX)],
+        "source": {"key": fed, "name": SOURCE_NAMES.get(fed, fed)} if fed else None,
         "priority": None if not ranked else "priority" if PRIORITY_LABEL in names else "nice" if NICE_LABEL in names else None,
         "tracks": tracked_numbers(node) if kind == "issue" and TRACKER_LABEL in names else None,
         # A closed issue, or a merged pull request (one that closes no issue gets its tick on its own row).

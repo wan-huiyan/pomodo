@@ -957,3 +957,19 @@ def test_robot_vouched_is_a_badge_not_a_label_chip():
     i = board._item(_node(5, kind="pr", state="MERGED", closed="2026-10-27T10:00:00Z", labels=["robot-vouched", "bug"]), "pr", NOW)
     assert i["robot"] is True and [c["name"] for c in i["chips"]] == ["bug"]
     assert board._item(_node(6, labels=["bug"]), "issue", NOW)["robot"] is False
+
+
+def test_a_fed_issue_says_where_it_came_from_and_its_label_is_no_chip():
+    raw = {"issues": [_node(1, labels=["from:slack", "bug"]), _node(2, labels=["from:pigeon"]), _node(3)],
+           "pullRequests": []}
+    items = {i["number"]: i for i in build_board(raw, NOW)["unclaimed"]}
+    assert items[1]["source"] == {"key": "slack", "name": "Slack"}
+    assert items[2]["source"] == {"key": "pigeon", "name": "pigeon"}  # an unknown source is named as written
+    assert items[3]["source"] is None
+    assert [c["name"] for c in items[1]["chips"]] == ["bug"]  # the badge replaces the raw label
+    assert "from:slack" in [l["name"] for l in items[1]["labels"]]  # the full list keeps it, for filters
+
+
+def test_meeting_notes_get_a_readable_name():
+    raw = {"issues": [_node(1, labels=["from:meeting"])], "pullRequests": []}
+    assert build_board(raw, NOW)["unclaimed"][0]["source"]["name"] == "meeting notes"
