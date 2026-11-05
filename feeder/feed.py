@@ -223,7 +223,8 @@ def main(argv):
         if not pinned:
             raise PlanError("set the team repo first: echo owner/name > ~/.pomodo-feeder/repo")
         state.mkdir(exist_ok=True)
-        run(plan, gh_cli, state / "ledger.jsonl", pinned, dry_run=dry, on_line=print)
+        run(plan, gh_cli, state / "ledger.jsonl", pinned, dry_run=dry,
+            on_line=lambda line: print(line, flush=True))  # flushed: piped with 2>&1, Done must land before Stopped
     except (PlanError, GhError) as e:
         print(f"Stopped: {e}", file=sys.stderr)
         return 1

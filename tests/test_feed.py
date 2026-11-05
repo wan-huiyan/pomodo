@@ -180,6 +180,17 @@ def test_main_prints_the_done_lines_before_it_stops(home, monkeypatch):
     assert home.out == 'Done: opened #77 "Send Sam the numbers" (from Slack)\n'
 
 
+def test_main_flushes_each_done_line_so_it_lands_before_stopped(home, monkeypatch):
+    """Piped with 2>&1, stdout is buffered but stderr is not: an unflushed Done line would come out after Stopped."""
+    calls = []
+    monkeypatch.setattr(feed, "print", lambda *a, **k: calls.append((a, k)), raising=False)
+    home.pin()
+    monkeypatch.setattr(feed, "gh_cli", FakeGh(fail_on="comment"))
+    home.main(json.dumps(PLAN))
+    done = [k for a, k in calls if a and str(a[0]).startswith("Done:")]
+    assert done and all(k.get("flush") for k in done)
+
+
 def test_a_dry_run_reads_but_never_writes(tmp_path):
     gh = FakeGh()
     lines = run(copy.deepcopy(PLAN), gh, tmp_path / "ledger.jsonl", dry_run=True)
