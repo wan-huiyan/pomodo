@@ -106,6 +106,7 @@ An unknown key or a bad value stops the app at start-up with a message naming th
 | `[labels] priority_title` | What the page calls that group. Default `Top priority`. |
 | `[labels] nice` | The "Nice to have" label. Default `nice-to-have`. |
 | `[labels] milestone` | Optional. A label whose closed/total count shows as a stat at the top. Leave `""` for none. |
+| `[labels] source_prefix` | Labels starting with this say where Pomodo's feeder found a to-do, shown as a "From Slack" style badge instead of a chip. Default `from:`. |
 | `[done] hide_labels` | Recently done shows main work by default; "Everything" adds work with these labels, as well as chores and trackers. Default `["documentation"]`. |
 | `[done] hide_titles` | Also left out of main work: titles starting with any of these, ignoring case, such as `["Docs:"]`. Default none. |
 | `[read] recent_only` | `false` (the default) reads every issue and pull request ever filed. `true` reads only the open ones plus those closed or merged since the first day of last month on the board's clock (what Recently done's calendar shows). Use it on a repo with thousands of items, where the full read is too slow. A tracker still counts every issue it lists (the few the read lacks are fetched by number), and the milestone and priority counts still use all closed issues. An issue closed inside the window by a pull request merged before it shows as "closed this" on its own row, without naming the pull request. |
@@ -372,6 +373,16 @@ It shows **main work** by default. "Everything" (`?done=all`) adds docs, chores 
 **After hours** means before `work_start` or from `work_end` on a weekday, on the clock of whoever finished the row (their `zone` in `[[team]]`). A row finished on a Saturday or Sunday is weekend work, never after hours. Pomo, the board's pixel tomato (named after the tomato-shaped kitchen timer of the Pomodoro technique), opens the day with a short line: about work done after hours, early or at the weekend, an evening with nothing finished, or a day with nothing at all.
 
 The other lists are ordered by last update, with top-priority issues first in each person's card; the top card and Chores are ordered by number. "Up for grabs" has a switch between "Recently updated" and "Recently opened" (by the date each issue was opened). A click re-sorts the list where it is. The choice is also in the address (`?order=newest`), so a reload keeps it, and the two links work without JavaScript.
+
+## Feed it from Slack, Gmail, Calendar, meeting notes and Jira
+
+Some to-dos never start on GitHub: a favour asked in Slack, an email you owe a reply to, a promise made in a meeting. The feeder is a small helper that finds these and opens a GitHub issue for each, so they show up on the board with everything else. Each issue gets a label such as `from:slack`, and the board shows it as a "From Slack" badge (or "From Gmail", "From Calendar", "From meeting notes", "From Jira") in place of the raw label. The issue's Details says where exactly the to-do was found.
+
+- **It runs on each person's own computer**, using that person's own Slack, Gmail, Calendar and Jira connections. Nobody's messages or mail pass through the board, and it only sees what that person can already see.
+- **It only adds.** It never closes, reassigns or edits an issue that is already there.
+- **It refuses public repos.** The to-dos it finds can quote private messages, so it will not open issues on a repo that anyone can read.
+
+The setup steps are in `feeder/SKILL.md`. To use a different label prefix, change `[labels] source_prefix`.
 
 ## Labels the board understands
 

@@ -155,6 +155,7 @@ class _Demo:
         self.days = [d for d in (self.today - timedelta(days=n) for n in range(WEEKS * 7, 0, -1)) if d.weekday() < 5]
         self.colors = {"bug": "d73a4a", "enhancement": "a2eeef", "documentation": "0075ca", L.priority: "d93f0b", L.nice: "0e8a16",
                        L.chore: "fbca04", L.tracker: "5319e7", L.verified: "2da44e", L.robot: "8b84d7"}
+        self.colors.update({L.source_prefix + s: "c5def5" for s in ("slack", "meeting")})
         if L.milestone:
             self.colors[L.milestone] = "1d76db"
         self.specs, self.keys = [], {}
@@ -246,6 +247,10 @@ class _Demo:
                              + _task(None, False, "Who to ask") + "</ul>")
         for key, title, label, rank in UNCLAIMED:
             self.open_issue(key, title, label, rank)
+        # Two to-dos the feeder found outside GitHub: Up for grabs shows where each came from.
+        for key, title, source in (("fed-slack", "Send Sam the export numbers for Thursday", "slack"),
+                                   ("fed-meeting", "Write up the sign-in decision from Monday's meeting", "meeting")):
+            self.open_issue(key, title, "")["labels"].append(L.source_prefix + source)
         for i, title in enumerate(CHORES):
             spec = self.open_issue(f"chore{i}", title, "", owner=team[0] if i == 1 else None)
             spec["labels"] = [L.chore]

@@ -51,7 +51,7 @@ def test_the_demo_fills_every_section(now):
     assert [p["login"] for p in b["people"]] == [p.login for p in CONFIG.team]
     for p in b["people"]:
         assert 2 <= len(p["items"]) <= 4, p["name"]
-    assert 4 <= len(b["unclaimed"]) <= 8
+    assert 6 <= len(b["unclaimed"]) <= 10  # includes the two fed issues
     assert all(g["items"] for g in b["unclaimed_groups"])  # top priority, nice to have and not sorted yet
     assert 2 <= len(b["todos"]) <= 3
     assert len(b["trackers"]) == 1 and 0 < b["trackers"][0]["closed"] < b["trackers"][0]["total"]
@@ -161,7 +161,8 @@ def test_the_demo_works_for_any_team_and_any_clock():
         raw = make_raw(now, config)
         assert all(_at(t) <= now for t in _times(raw))
         names = {l["name"] for n in raw["issues"] + raw["pullRequests"] for l in n["labels"]["nodes"]}
-        assert names == {"bug", "enhancement", "documentation", "admin", "list", "checked", "bot-ok", "urgent", "later"}  # theirs, and no milestone
+        assert names == {"bug", "enhancement", "documentation", "admin", "list", "checked", "bot-ok", "urgent", "later",
+                     "from:slack", "from:meeting"}  # theirs, and no milestone; plus the two fed issues' source labels
         mine = [n for n in raw["issues"] if n["state"] == "OPEN" and [a["login"] for a in n["assignees"]["nodes"]] == ["Guest-Dev"]
                 and not {"admin", "list"} & {l["name"] for l in n["labels"]["nodes"]}]
         assert 2 <= len(mine) <= 4
@@ -230,3 +231,9 @@ def test_its_mine_and_checked_in_the_app_work_on_demo_data_and_survive_a_refresh
     assert state() == (True, True)
     clock[0] += 400
     assert state() == (True, True)
+
+
+def test_the_demo_shows_two_fed_issues(demo_board):
+    client, _ = demo_board
+    html = client.get("/").get_data(as_text=True)
+    assert ">From Slack</span>" in html and ">From meeting notes</span>" in html
