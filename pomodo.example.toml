@@ -33,6 +33,10 @@ hide_titles = []               # title starts, ignoring case, such as ["Docs:", 
 # [grabs]
 # labels = ["todo"]            # limit Up for grabs to open unassigned issues with one of these labels; [] keeps all
 
+# [shots]                      # annotated screenshots of robot-vouched work, shown in Details; set at most one
+# bucket = "my-board-shots"    # a private Google Cloud Storage bucket: <bucket>/<item number>/<n> <name>.png
+# folder = "dev/shots"         # or, for development, a local folder laid out the same way
+
 [[team]]                       # 1 to ~5 people; order is card order
 login = "ada-demo"
 name = "Ada"

@@ -27,6 +27,10 @@ _DONE = {"hide_labels": ["documentation"], "hide_titles": []}
 _READ = {"recent_only": False}
 # Up for grabs lists every open unassigned issue by default; with labels, only those carrying at least one of them.
 _GRABS = {"labels": []}
+# Where an agent's annotated screenshots of robot-vouched work live: a private GCS bucket, or a local folder for
+# development. Neither set: no screenshots.
+_SHOTS = {"bucket": "", "folder": ""}
+_BUCKET = re.compile(r"^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$")  # a GCS bucket name, as Google allows
 _AUTH = {"mode": "github"}  # "iap": behind Google's Identity-Aware Proxy, people named by email instead of GitHub sign-in
 _AUTH_MODES = ("github", "iap")
 _PERSON = {"login": None, "name": None, "zone": None, "id": None, "email": None}  # name defaults to the login, zone to the board's
@@ -73,6 +77,8 @@ class Config:
     auth_mode: str = "github"  # or "iap": who is signed in comes from Google's Identity-Aware Proxy
     recent_only: bool = False  # read open work plus what finished since last month began, not the whole history
     grab_labels: tuple = ()  # Up for grabs keeps only issues with one of these labels; empty keeps all
+    shots_bucket: str = ""  # a GCS bucket holding <number>/<name>.png, read as the board's own service account
+    shots_folder: str = ""  # or a local folder laid out the same way, for development
 
 
 def _table(data, allowed, where):
@@ -121,7 +127,7 @@ def _hour(data, key, default, where):
 
 def parse(data):
     """A Config from pomodo.toml's contents (a dict, as tomllib reads it). Raises ConfigError naming the bad key."""
-    _table(data, [*_TOP, "time", "labels", "done", "read", "grabs", "auth", "team"], "")
+    _table(data, [*_TOP, "time", "labels", "done", "read", "grabs", "shots", "auth", "team"], "")
     title = _text(data, "title", _TOP["title"], "title")
     repo = _text(data, "repo", None, "repo")
     if not _REPO.match(repo) or repo.split("/")[1] in (".", ".."):
@@ -146,6 +152,14 @@ def parse(data):
     if not isinstance(recent_only, bool):
         raise ConfigError("read.recent_only must be true or false")
     grab_labels = _texts(_table(data.get("grabs", {}), _GRABS, "grabs"), "labels", _GRABS["labels"], "grabs.labels")
+
+    shots = _table(data.get("shots", {}), _SHOTS, "shots")
+    bucket = _text(shots, "bucket", _SHOTS["bucket"], "shots.bucket", blank=True)
+    folder = _text(shots, "folder", _SHOTS["folder"], "shots.folder", blank=True)
+    if bucket and not _BUCKET.match(bucket):
+        raise ConfigError(f"shots.bucket = \"{bucket}\" is not a bucket name: just the name, as in \"my-board-shots\", not gs://")
+    if bucket and folder:
+        raise ConfigError("shots.bucket and shots.folder are both set: pick one")
 
     auth = _table(data.get("auth", {}), _AUTH, "auth")
     mode = auth.get("mode", _AUTH["mode"])
@@ -181,7 +195,8 @@ def parse(data):
                            zone=_zone(p.get("zone", zone), f"{where}.zone"), id=gid, email=email))
     return Config(title=title, repo=repo, zone=zone, zone_label=zone_label, work_start=start, work_end=end,
                   labels=labels, team=tuple(team), hide_labels=hide_labels, hide_titles=hide_titles,
-                  auth_mode=mode, recent_only=recent_only, grab_labels=grab_labels)
+                  auth_mode=mode, recent_only=recent_only, grab_labels=grab_labels,
+                  shots_bucket=bucket, shots_folder=folder)
 
 
 def load(path=None):

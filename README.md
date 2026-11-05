@@ -110,6 +110,8 @@ An unknown key or a bad value stops the app at start-up with a message naming th
 | `[done] hide_titles` | Also left out of main work: titles starting with any of these, ignoring case, such as `["Docs:"]`. Default none. |
 | `[read] recent_only` | `false` (the default) reads every issue and pull request ever filed. `true` reads only the open ones plus those closed or merged since the first day of last month on the board's clock (what Recently done's calendar shows). Use it on a repo with thousands of items, where the full read is too slow. A tracker still counts every issue it lists (the few the read lacks are fetched by number), and the milestone and priority counts still use all closed issues. An issue closed inside the window by a pull request merged before it shows as "closed this" on its own row, without naming the pull request. |
 | `[grabs] labels` | Limits Up for grabs to open unassigned issues carrying at least one of these labels, such as `["todo"]`. Default `[]`: all open unassigned issues. Person cards and the top card are not limited. |
+| `[shots] bucket` | Optional. A private Google Cloud Storage bucket (just its name) holding annotated screenshots of robot-vouched work; see "Screenshots of robot-vouched work". Default `""`: no screenshots. |
+| `[shots] folder` | Optional, for development: a local folder laid out like the bucket, instead of it. Relative to where the app runs. Set at most one of the two. |
 | `[auth] mode` | `"github"` (the default: people sign in with GitHub) or `"iap"` (Google's Identity-Aware Proxy lets them in; see "Behind Google IAP instead of GitHub sign-in"). |
 | `[[team]]` | One table per person, in the order of their cards. At least one; 2 to 5 works best. |
 | `[[team]] login` | **Required.** Their GitHub login. Logins ignore upper and lower case, and each may appear once. |
@@ -201,11 +203,13 @@ DEV_FIXTURE=dev/raw.json DEV_USER=your-login .venv/bin/flask --app main run -p 8
 
 `your-login` must be in `[[team]]`. "It's mine!" then changes only the local copy.
 
+To see screenshots locally, set `[shots] folder = "dev/shots"` in your `pomodo.toml` and put PNGs at `dev/shots/<number>/<file>.png`, laid out like the bucket.
+
 ## Deploy
 
 Pomodo runs on any host that runs a container (or a Python web app). The `Dockerfile` starts it with gunicorn on `$PORT` (default 8080).
 
-What the image holds: the app's modules, `templates/`, `static/`, and `pomodo*.toml`, which matches `pomodo.example.toml` and your own `pomodo.toml` if it is there. So **`pomodo.toml` must be in the folder when you build**, and you rebuild when you change it. It holds no secrets. The token, OAuth secret and `SECRET_KEY` are never put in the image; give them to the container as environment variables (on most hosts, as secrets).
+What the image holds: the app's modules, `templates/`, `static/`, `demo_shots/` (the demo's one picture), and `pomodo*.toml`, which matches `pomodo.example.toml` and your own `pomodo.toml` if it is there. So **`pomodo.toml` must be in the folder when you build**, and you rebuild when you change it. It holds no secrets. The token, OAuth secret and `SECRET_KEY` are never put in the image; give them to the container as environment variables (on most hosts, as secrets).
 
 Three settings every deployment needs:
 
@@ -321,6 +325,41 @@ The one source of truth is the `verified` label (default `human-verified`) on th
 ## Robot vouched
 
 An agent that checked a change in a real browser (Playwright, an in-app browser or similar) and saw it work adds the `robot` label (default `robot-vouched`) to the pull request, with a comment saying what it checked, where (local, or which version) and when. The board shows it as a periwinkle "Robot vouched" badge with a little hand-drawn robot, wherever the item appears: in Recently done next to "A human peeked", and in place of the label chip on open issues and pull requests. It is not a person's check and never replaces the `verified` label. There is no button for it on the board.
+
+### What Details opens on
+
+Details on an open issue or pull request opens on a short, plain summary, then pictures, and folds everything else under "More detail":
+
+1. **In plain words.** The `## In plain words` section of the description: one to three short sentences a newcomer would follow, saying what changed for the person using the app, with no file names or jargon. It shows first, in larger text, and is left out of the full description below. Only a heading at the top level counts, not one inside a quote or a folded block.
+2. **Annotated screenshots**, once the item carries the `robot` label: an orange ring and a number on each changed part of the page, a title above and one sentence per number below.
+3. **More detail**: the rest of the description and the comments, as before.
+
+An item with neither opens straight on everything, as before. Recently done rows have no Details, so a pull request shows its summary and pictures while it is open, not after it merges. `DEMO=1` shows one example: the open pull request "Add Spanish translations for the sign-in page". Tests: `tests/test_shots.py`.
+
+### Screenshots of robot-vouched work
+
+1. Write the `## In plain words` section at the top of the pull request description.
+2. Run the changed page locally on made-up data and check that the change works.
+3. Take one picture per change a reader would notice, at most three. Copy the config format from the top of `scripts/annotate_shots.py`, write one sentence per ring (what the reader sees and can do, not how it was built), and run:
+   ```bash
+   uv run --quiet --with playwright --with pillow python3 -I scripts/annotate_shots.py <config.json>
+   ```
+   It names any selector that matches nothing and prints the page's errors (expect `none`). Keep the config and the PNGs outside the repo.
+4. Open every PNG and look: each ring around the right thing, numbers in reading order, nothing cut in half. Fix the config and run it again rather than editing pixels.
+5. Upload them to the pull request's folder (its number), named in reading order (`1 ....png`, `2 ....png`), using letters, digits, spaces and `.,()'-` only. Other names are skipped, with a log line.
+   ```bash
+   gcloud storage cp <out folder>/*.png gs://<bucket>/<PR number>/
+   ```
+6. Add the `robot` label and the comment (what, where, when). The board picks the pictures up with its next read of GitHub.
+
+**The bucket.** Make it private (no public access) and let only the board's runtime service account read it; the people or agents who upload need write access:
+
+```bash
+gcloud storage buckets create gs://<bucket> --project <project> --location <region> --uniform-bucket-level-access --public-access-prevention
+gcloud storage buckets add-iam-policy-binding gs://<bucket> --member serviceAccount:<runtime service account> --role roles/storage.objectViewer
+```
+
+Then set `[shots] bucket = "<bucket>"` in `pomodo.toml` and redeploy. The app reads it with Application Default Credentials (on Cloud Run, the service's own account). It lists the bucket once per read of GitHub and serves each picture at `/shots/<number>/<file>`, behind the same sign-in as the page, so the bucket never has to be public. A failed listing logs "Listing screenshots failed" and the board keeps the last good listing (none before the first) instead of showing an error. Only PNG files directly inside a numbered folder are shown.
 
 ## How "Recently done" works
 
