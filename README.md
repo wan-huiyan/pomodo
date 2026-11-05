@@ -382,11 +382,13 @@ Some to-dos never start on GitHub: a favour asked in Slack, an email you owe a r
 - **It only adds.** It never closes, reassigns or edits an issue that is already there.
 - **It refuses public repos.** The to-dos it finds can quote private messages, so it will not open issues on a repo that anyone can read.
 
-The setup steps are in `feeder/SKILL.md`. To use a different label prefix, change `[labels] source_prefix`.
+The setup steps are in two files: `feeder/routine-prompt.md` has the scheduled task (the blanks to fill in and the schedule) and the one-time step of naming the team repo, and `feeder/SKILL.md` has the rules the task follows. The feeder always writes `from:` labels, so if you use it, leave `[labels] source_prefix` as `from:`.
+
+The guards only bind writes made through `feeder/feed.py`. When you create the scheduled task, do not give it any other way to change GitHub.
 
 ## Labels the board understands
 
-Names come from `[labels]` in `pomodo.toml`; these are the defaults. Every other label is just shown as a chip.
+Names come from `[labels]` in `pomodo.toml`; these are the defaults. A `from:<source>` label (`from:slack`, `from:gmail`, `from:calendar`, `from:meeting`, `from:jira`) is shown as a "From Slack" style badge, not a chip. Every other label is just shown as a chip.
 
 | Label | What the board does with it |
 |---|---|
