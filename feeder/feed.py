@@ -28,7 +28,7 @@ _KEY = re.compile(r"[a-z]+:[A-Za-z0-9._:/@#=-]{1,200}")
 _LINK = re.compile(r"https://[^\s<>\"'()\[\]!@*`]{1,500}")  # no markdown punctuation: the link is written as <link>
 _MARKER = re.compile(r"<!-- pomodo-source: (\S+) -->")
 _SITE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+")
-_JIRA_KEY = re.compile(r"jira:([A-Za-z][A-Za-z0-9_]*)-[0-9]+:.+")
+_JIRA_KEY = re.compile(r"jira:(([A-Za-z][A-Za-z0-9_]*)-[0-9]+):.+")
 # Each table a project file may have, and the keys it must have (all of them are lists of text except jira.site).
 _TABLES = {"slack": ("channels",), "jira": ("site", "projects"), "gmail": ("domains",),
            "calendar": ("title_words",), "meeting": ("title_words",)}
@@ -127,13 +127,20 @@ def check_scope(plan, project):
             if len(channel) != 2 or not channel[1] or channel[0] not in table["channels"]:
                 raise PlanError(f"{where}: key must be slack:<channel>/<ts> with a channel listed in {project.name} "
                                 f"slack.channels ({', '.join(table['channels'])})")
+            if channel[0] not in urlsplit(a["link"]).path.split("/"):
+                raise PlanError(f"{where}: link must point into the channel in the key ({channel[0]}); "
+                                f"its path has no {channel[0]} part")
         elif source == "jira":
             found = _JIRA_KEY.fullmatch(a["key"])
-            if not found or found.group(1) not in table["projects"]:
+            if not found or found.group(2) not in table["projects"]:
                 raise PlanError(f"{where}: key must be jira:<KEY>-<n>:<status> with KEY listed in {project.name} "
                                 f"jira.projects ({', '.join(table['projects'])})")
-            if urlsplit(a["link"]).netloc.lower() != table["site"].lower():
+            link = urlsplit(a["link"])
+            if link.netloc.lower() != table["site"].lower():
                 raise PlanError(f"{where}: link host must be {table['site']} (jira.site in {project.name})")
+            parts = link.path.split("/")
+            if not any(x == "browse" and y == found.group(1) for x, y in zip(parts, parts[1:])):
+                raise PlanError(f"{where}: link path must contain /browse/{found.group(1)} (the issue in the key)")
 
 
 def check_plan(plan):
@@ -317,7 +324,8 @@ def main(argv):
         plan = check_plan(json.loads(Path(args[2]).read_text()))
         if project.repo.lower() not in (r.lower() for r in load_allowed(state / "repos")):
             raise PlanError(f"{project.repo} is not in your list of trusted repos: add it to ~/.pomodo-feeder/repos "
-                            f"(one owner/name per line)")
+                            f"(one owner/name per line). First time: mkdir -p ~/.pomodo-feeder && "
+                            f"echo {project.repo} >> ~/.pomodo-feeder/repos")
         state.mkdir(exist_ok=True)
         run(plan, gh_cli, state / "ledger.jsonl", project, dry_run=dry,
             on_line=lambda line: print(line, flush=True))  # flushed: piped with 2>&1, Done must land before Stopped

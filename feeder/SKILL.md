@@ -15,7 +15,7 @@ The rules here are borrowed from morning-fairy. The feeder writes only through `
 
 ## 1a. The project file and the allow-list
 
-Each project has `board/feeder.toml` in its own repo, committed so colleagues share it. Every table is optional, and **a source with no table is off**: `feed.py` refuses its actions. An unknown key or table is an error.
+Each project has `board/feeder.toml` in its own repo, committed so colleagues share it. Every table is optional, and **a source with no table is off**: `feed.py` refuses its actions. An unknown key or table is an error. Inside a table that is present, every key is required and every list must be non-empty. To turn a source off, delete its table.
 
 ```toml
 repo = "MightyHive/barryu-tracker"      # required: owner/name; every plan must name it
@@ -120,11 +120,11 @@ What `feed.py` does for you:
 
 - Refuses a project file that is invalid, or whose `repo` is not in `~/.pomodo-feeder/repos`, before it calls GitHub at all.
 - Refuses any plan whose `repo` is not the project's `repo`, before it calls GitHub at all.
-- Refuses the whole plan if an action uses a source with no table, a Slack channel not in `channels`, a Jira key whose project is not in `projects`, or a Jira link not on `site`.
+- Refuses the whole plan if an action uses a source with no table, a Slack channel not in `channels`, a Slack link that does not contain the key's channel id as a path segment, a Jira key whose project is not in `projects`, a Jira link not on `site`, or a Jira link whose path lacks `/browse/<the key's issue>`.
 - Refuses any repo that is not private or internal.
 - Allows at most 10 new issues and 20 comments or `maybe-done` marks per run, and refuses a plan with more.
 - Skips a key it has already fed. It knows from markers in earlier fed issues, from comments on the issues the plan targets, and from the ledger. A skipped action prints `Skipped <key>: already fed`.
 - Escapes `<` and `>`, stops @-names from pinging anyone, and neutralises markdown images, and writes each link as `<https://...>`.
 - Prints one line per action (`Done: ...`, `Would ...`, `Skipped ...`). Any failure prints `Stopped: ...` and exits 1; nothing after that point was done, so read the message, fix the plan, and run again.
 
-Finish with its output lines, one line per source that could not be read, then the three summary lines the routine prompt asks for (issues opened, issues updated, sources not read).
+Finish with, in this order: its output lines, one line per source that could not be read, one line per "Left out: looks like another project", then the three summary lines the routine prompt asks for (issues opened, issues updated, sources not read).

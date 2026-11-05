@@ -453,7 +453,7 @@ def test_main_with_the_repo_not_in_the_allow_list_stops_and_says_how_to_add_it(h
     monkeypatch.setattr(feed, "gh_cli", gh)
     code, err = home.main(json.dumps(PLAN))
     _stopped(code, err)
-    assert "acme/widgets" in err and "add it to ~/.pomodo-feeder/repos" in err
+    assert "mkdir -p ~/.pomodo-feeder && echo acme/widgets >> ~/.pomodo-feeder/repos" in err
     assert gh.calls == []
 
 
@@ -592,6 +592,34 @@ def test_a_jira_key_outside_the_listed_projects_is_refused(tmp_path, key):
                                   "https://acme.atlassian.net:8443/browse/PROJ-88", "https://sub.acme.atlassian.net/x"])
 def test_a_jira_link_on_another_host_is_refused(tmp_path, link):
     _refused(tmp_path, {**PLAN["actions"][2], "link": link}, r"action 1.*host.*acme\.atlassian\.net")
+
+
+@pytest.mark.parametrize("link", ["https://acme.slack.com/archives/C99999/p1", "https://acme.slack.com/archives/C04ABC9/p1",
+                                  "https://acme.slack.com/x?c=C04ABC"])
+def test_a_slack_link_to_another_channel_is_refused(tmp_path, link):
+    _refused(tmp_path, {**PLAN["actions"][0], "link": link}, r"action 1.*link.*C04ABC")
+
+
+@pytest.mark.parametrize("link", ["https://acme.slack.com/archives/C04ABC/p1", "https://app.slack.com/client/T1/C04ABC"])
+def test_a_slack_link_naming_the_keys_channel_passes(tmp_path, link):
+    gh = FakeGh()
+    run({**PLAN, "actions": [{**PLAN["actions"][0], "link": link}]}, gh, tmp_path / "l.jsonl")
+    assert gh.writes()
+
+
+@pytest.mark.parametrize("link", ["https://acme.atlassian.net/browse/PROJ-10", "https://acme.atlassian.net/browse/PROJ-8",
+                                  "https://acme.atlassian.net/browse/PROJ-880", "https://acme.atlassian.net/x/PROJ-88",
+                                  "https://acme.atlassian.net/browse/OTHER-88"])
+def test_a_jira_link_to_another_issue_is_refused(tmp_path, link):
+    _refused(tmp_path, {**PLAN["actions"][2], "link": link}, r"action 1.*link.*/browse/PROJ-88")
+
+
+@pytest.mark.parametrize("link", ["https://acme.atlassian.net/browse/PROJ-88", "https://acme.atlassian.net/browse/PROJ-88?x=1",
+                                  "https://acme.atlassian.net/browse/PROJ-88/"])
+def test_a_jira_link_to_the_keys_issue_passes(tmp_path, link):
+    gh = FakeGh()
+    run({**PLAN, "actions": [{**PLAN["actions"][2], "link": link}]}, gh, tmp_path / "l.jsonl")
+    assert gh.writes()
 
 
 def test_the_jira_host_is_compared_ignoring_case(tmp_path):

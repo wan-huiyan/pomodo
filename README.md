@@ -402,6 +402,8 @@ title_words = ["Barry"]
 
 You also keep a personal list of the repos you trust, `~/.pomodo-feeder/repos`, one `owner/name` per line. The feeder refuses a project file whose repo is not on your list, so a settings file in a repo you do not trust cannot send mail summaries anywhere new. Because each run belongs to one project, mail and chat from one client can never land in another client's repo. The feeder checks the Slack channel, the Jira project and the Jira host itself; the scheduled task applies the Gmail domains and the calendar and meeting title words, since the feeder cannot see them.
 
+The project file is trusted as far as the people who can write to its repo are: anyone who can commit `board/feeder.toml` to a repo on your list can widen which sources the feeder reads for that project.
+
 Run it with `python3 -I feeder/feed.py --project board/feeder.toml plan.json`, once per project.
 
 The setup steps are in two files: `feeder/routine-prompt.md` has the scheduled task (the blanks to fill in and the schedule, one task per project) and the one-time steps, and `feeder/SKILL.md` has the rules the task follows. The feeder always writes `from:` labels, so if you use it, leave `[labels] source_prefix` as `from:`.
