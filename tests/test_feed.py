@@ -1,9 +1,10 @@
 import copy
+import json
 
 import pytest
 
 from feeder import feed
-from feeder.feed import PlanError, check_plan, issue_body, keys_in, note_body, quiet
+from feeder.feed import GhError, PlanError, check_plan, issue_body, keys_in, note_body, quiet, run
 
 PLAN = {"repo": "acme/widgets", "owner": "Ada", "actions": [
     {"do": "create", "source": "slack", "key": "slack:C04ABC/1730800000.123456", "title": "Send Sam the numbers",
@@ -88,3 +89,79 @@ def test_a_maybe_done_note_says_what_to_do_next():
     assert "close this issue" in note and "remove the `maybe-done` label" in note
     assert keys_in(note) == {"jira:PROJ-88:Done"}
     assert note_body(PLAN["actions"][1]).startswith("**New from Gmail:** The client confirmed.")
+
+
+class FakeGh:
+    """Records every gh call. Answers visibility, issue lists and issue create like gh does."""
+
+    def __init__(self, visibility="PRIVATE", existing=(), fail_on=None):
+        self.calls, self.visibility, self.existing, self.fail_on = [], visibility, list(existing), fail_on
+
+    def __call__(self, args, stdin=None):
+        self.calls.append((args, stdin))
+        if self.fail_on and self.fail_on in args:
+            raise GhError("HTTP 502")
+        if args[:2] == ["repo", "view"]:
+            return self.visibility + "\n"
+        if args[:2] == ["issue", "list"]:
+            label = args[args.index("--label") + 1]
+            return json.dumps([e for e in self.existing if label in e.get("labels", [label])])
+        if args[:2] == ["issue", "create"]:
+            return "https://github.com/acme/widgets/issues/77\n"
+        return ""
+
+    def writes(self):
+        return [a for a, _ in self.calls if a[:2] not in (["repo", "view"], ["issue", "list"])]
+
+
+def test_a_plan_is_carried_out_with_only_additive_commands(tmp_path):
+    gh = FakeGh()
+    lines = run(copy.deepcopy(PLAN), gh, tmp_path / "ledger.jsonl")
+    verbs = [a[:2] for a in gh.writes()]
+    assert ["issue", "create"] in verbs and ["issue", "comment"] in verbs and ["issue", "edit"] in verbs
+    assert all(v[0] in ("issue", "label") and v[1] in ("create", "comment", "edit") for v in verbs)
+    edit = next(a for a in gh.writes() if a[:2] == ["issue", "edit"])
+    assert edit[edit.index("--add-label") + 1] == "maybe-done" and "--remove-label" not in edit
+    create = next(a for a in gh.writes() if a[:2] == ["issue", "create"])
+    assert "--assignee" in create and create[create.index("--assignee") + 1] == "@me"
+    assert len((tmp_path / "ledger.jsonl").read_text().splitlines()) == 3
+    assert any("#77" in line for line in lines)
+
+
+def test_a_public_repo_is_refused_before_anything_is_written(tmp_path):
+    gh = FakeGh(visibility="PUBLIC")
+    with pytest.raises(PlanError, match="public"):
+        run(copy.deepcopy(PLAN), gh, tmp_path / "ledger.jsonl")
+    assert gh.writes() == []
+
+
+def test_nothing_is_fed_twice(tmp_path):
+    first = FakeGh()
+    run(copy.deepcopy(PLAN), first, tmp_path / "ledger.jsonl")
+    again = FakeGh()  # the ledger remembers the comment and the mark
+    run(copy.deepcopy(PLAN), again, tmp_path / "ledger.jsonl")
+    assert again.writes() == []
+    # On another computer (no ledger), the marker in the issue body still stops a second create.
+    body = issue_body(PLAN["actions"][0], "Ada")
+    other = FakeGh(existing=[{"number": 77, "body": body, "labels": ["from:slack"]}])
+    run({**PLAN, "actions": [PLAN["actions"][0]]}, other, tmp_path / "other.jsonl")
+    assert other.writes() == []
+
+
+def test_a_failure_halfway_keeps_what_was_done_and_stops(tmp_path):
+    gh = FakeGh(fail_on="comment")
+    with pytest.raises(GhError):
+        run(copy.deepcopy(PLAN), gh, tmp_path / "ledger.jsonl")
+    done = [json.loads(line)["key"] for line in (tmp_path / "ledger.jsonl").read_text().splitlines()]
+    assert done == [PLAN["actions"][0]["key"]]  # the create, not the comment or anything after it
+
+
+def test_a_dry_run_reads_but_never_writes(tmp_path):
+    gh = FakeGh()
+    lines = run(copy.deepcopy(PLAN), gh, tmp_path / "ledger.jsonl", dry_run=True)
+    assert gh.writes() == [] and not (tmp_path / "ledger.jsonl").exists()
+    assert lines and all(line.startswith("Would") for line in lines)
+
+
+def test_the_board_image_never_ships_the_feeder():
+    assert "feeder" not in open("Dockerfile").read()

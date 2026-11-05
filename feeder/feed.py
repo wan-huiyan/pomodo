@@ -6,7 +6,12 @@ It never closes, reopens, reassigns, edits or deletes, and it refuses a public r
 
     python3 -I feeder/feed.py plan.json [--dry-run]
 """
+import json
 import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 SOURCES = {"slack": "Slack", "gmail": "Gmail", "calendar": "Calendar", "meeting": "Meeting notes", "jira": "Jira"}
 PREFIX = "from:"
@@ -103,3 +108,95 @@ def note_body(action):
     else:
         head = f"**New from {name}:** {quiet(action['text'])}\n{action['link']}"
     return f"{head}\n\n{marker(action['key'])}\n"
+
+
+class GhError(RuntimeError):
+    """A gh command failed. The message is gh's own, without the token."""
+
+
+def gh_cli(args, stdin=None):
+    """Run one gh command with the owner's own login."""
+    r = subprocess.run(["gh", *args], input=stdin, capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise GhError(f"gh {' '.join(args[:2])} failed: {r.stderr.strip()[:300]}")
+    return r.stdout
+
+
+def _fed_keys(plan, gh, ledger):
+    repo, keys = plan["repo"], set()
+    for source in sorted({a["source"] for a in plan["actions"]}):
+        listed = json.loads(gh(["issue", "list", "-R", repo, "--state", "all", "--label", PREFIX + source,
+                                "--limit", "1000", "--json", "number,body"]) or "[]")
+        for issue in listed:
+            keys |= keys_in(issue.get("body"))
+    if ledger.exists():
+        for line in ledger.read_text().splitlines():
+            entry = json.loads(line)
+            if entry.get("repo") == repo:
+                keys.add(entry["key"])
+    return keys
+
+
+def _label(gh, repo, name, description):
+    gh(["label", "create", name, "-R", repo, "--color", "c5def5", "--description", description, "--force"])
+
+
+def run(plan, gh, ledger, dry_run=False):
+    """Carry out a checked plan, skipping anything already fed. Returns one line per action."""
+    check_plan(plan)
+    repo = plan["repo"]
+    visibility = gh(["repo", "view", repo, "--json", "visibility", "-q", ".visibility"]).strip()
+    if visibility not in ("PRIVATE", "INTERNAL"):
+        raise PlanError(f"{repo} is public ({visibility or 'unknown'}): fed issues would publish private mail and chat")
+    fed, lines = _fed_keys(plan, gh, ledger), []
+    for a in plan["actions"]:
+        if a["key"] in fed:
+            lines.append(f"Skipped {a['key']}: already fed")
+            continue
+        what = (f"open \"{a['title']}\"" if a["do"] == "create" else
+                f"comment on #{a['number']}" if a["do"] == "comment" else f"mark #{a['number']} maybe done")
+        if dry_run:
+            lines.append(f"Would {what} (from {SOURCES[a['source']]})")
+            continue
+        number = a.get("number")
+        if a["do"] == "create":
+            _label(gh, repo, PREFIX + a["source"], "Found by Pomodo's feeder")
+            args = ["issue", "create", "-R", repo, "--title", quiet(a["title"]), "--body-file", "-",
+                    "--label", PREFIX + a["source"]]
+            if a.get("assign_owner"):
+                args += ["--assignee", "@me"]
+            number = int(gh(args, stdin=issue_body(a, plan["owner"])).strip().rsplit("/", 1)[-1])
+            what = f"opened #{number} \"{a['title']}\""
+        else:
+            if a["do"] == "maybe_done":
+                _label(gh, repo, MAYBE_DONE, "The feeder thinks this is done; a person closes it")
+                gh(["issue", "edit", str(number), "-R", repo, "--add-label", MAYBE_DONE])
+            gh(["issue", "comment", str(number), "-R", repo, "--body-file", "-"], stdin=note_body(a))
+            what = f"{'commented on' if a['do'] == 'comment' else 'marked maybe done'} #{number}"
+        with ledger.open("a") as f:
+            f.write(json.dumps({"repo": repo, "key": a["key"], "do": a["do"], "number": number,
+                                "at": datetime.now(timezone.utc).isoformat()}) + "\n")
+        fed.add(a["key"])
+        lines.append(f"Done: {what} (from {SOURCES[a['source']]})")
+    return lines
+
+
+def main(argv):
+    dry = "--dry-run" in argv
+    paths = [a for a in argv if a != "--dry-run"]
+    if len(paths) != 1:
+        print("usage: python3 -I feeder/feed.py plan.json [--dry-run]", file=sys.stderr)
+        return 2
+    ledger = Path.home() / ".pomodo-feeder" / "ledger.jsonl"
+    ledger.parent.mkdir(exist_ok=True)
+    try:
+        for line in run(json.loads(Path(paths[0]).read_text()), gh_cli, ledger, dry_run=dry):
+            print(line)
+    except (PlanError, GhError) as e:
+        print(f"Stopped: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
