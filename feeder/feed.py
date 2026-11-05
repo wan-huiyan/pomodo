@@ -19,7 +19,7 @@ MAYBE_DONE = "maybe-done"
 MAX_CREATES, MAX_NOTES = 10, 20
 _REPO = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9._-]+")  # used with fullmatch: `$` lets a final newline through
 _KEY = re.compile(r"[a-z]+:[A-Za-z0-9._:/@#=-]{1,200}")
-_LINK = re.compile(r"https://[^\s<>\"']{1,500}")
+_LINK = re.compile(r"https://[^\s<>\"'()\[\]!@*`]{1,500}")  # no markdown punctuation: the link is written as <link>
 _MARKER = re.compile(r"<!-- pomodo-source: (\S+) -->")
 _FIELDS = {"create": {"do", "source", "key", "link", "title", "plain", "assign_owner"},
            "comment": {"do", "source", "key", "link", "number", "text"},
@@ -54,7 +54,7 @@ def check_plan(plan):
         extra = set(a) - _FIELDS[a["do"]]
         if extra:
             raise PlanError(f"{where}: {', '.join(sorted(extra))} is not allowed for {a['do']}")
-        if a.get("source") not in SOURCES:
+        if not isinstance(a.get("source"), str) or a["source"] not in SOURCES:
             raise PlanError(f"{where}: source must be one of {', '.join(SOURCES)}")
         if not isinstance(a.get("key"), str) or not _KEY.fullmatch(a["key"]) or not a["key"].startswith(a["source"] + ":"):
             raise PlanError(f"{where}: key must look like {a['source']}:<id>, with no spaces")
@@ -96,7 +96,7 @@ def keys_in(text):
 
 def issue_body(action, owner):
     return (f"## In plain words\n\n{quiet(action['plain'])}\n\n"
-            f"## Where this came from\n\n{SOURCES[action['source']]}: {action['link']}\n\n"
+            f"## Where this came from\n\n{SOURCES[action['source']]}: <{action['link']}>\n\n"
             f"Opened by Pomodo's feeder for {quiet(owner)}. The feeder only adds: it never closes, reassigns or edits. "
             f"A person does that.\n\n{marker(action['key'])}\n")
 
@@ -104,10 +104,10 @@ def issue_body(action, owner):
 def note_body(action):
     name = SOURCES[action["source"]]
     if action["do"] == "maybe_done":
-        head = (f"**This may be done** ({name}): {quiet(action['text'])}\n{action['link']}\n\n"
+        head = (f"**This may be done** ({name}): {quiet(action['text'])}\n<{action['link']}>\n\n"
                 f"If it is, close this issue. If not, remove the `{MAYBE_DONE}` label.")
     else:
-        head = f"**New from {name}:** {quiet(action['text'])}\n{action['link']}"
+        head = f"**New from {name}:** {quiet(action['text'])}\n<{action['link']}>"
     return f"{head}\n\n{marker(action['key'])}\n"
 
 
@@ -155,33 +155,42 @@ def _remember(ledger, repo, a, number):
                             "at": datetime.now(timezone.utc).isoformat()}) + "\n")
 
 
-def run(plan, gh, ledger, dry_run=False):
-    """Carry out a checked plan, skipping anything already fed. Returns one line per action."""
+def run(plan, gh, ledger, pinned_repo, dry_run=False, on_line=None):
+    """Carry out a checked plan, skipping anything already fed. Returns one line per action; on_line, when given,
+    also gets each line the moment it is known, so a failure later on still shows what was done."""
     check_plan(plan)
     repo = plan["repo"]
+    if repo.lower() != pinned_repo.lower():
+        raise PlanError(f"the plan is for {repo} but the team repo is set to {pinned_repo}; nothing was done")
     visibility = gh(["repo", "view", repo, "--json", "visibility", "-q", ".visibility"]).strip()
     if visibility not in ("PRIVATE", "INTERNAL"):
         raise PlanError(f"{repo} is public ({visibility or 'unknown'}): fed issues would publish private mail and chat")
     fed, lines = _fed_keys(plan, gh, ledger), []
+
+    def say(line):
+        lines.append(line)
+        if on_line:
+            on_line(line)
+
     for a in plan["actions"]:
         if a["key"] in fed:
-            lines.append(f"Skipped {a['key']}: already fed")
+            say(f"Skipped {a['key']}: already fed")
             continue
         what = (f"open \"{a['title']}\"" if a["do"] == "create" else
                 f"comment on #{a['number']}" if a["do"] == "comment" else f"mark #{a['number']} maybe done")
         if dry_run:
-            lines.append(f"Would {what} (from {SOURCES[a['source']]})")
+            say(f"Would {what} (from {SOURCES[a['source']]})")
             continue
         number = a.get("number")
         if a["do"] == "create":
             _label(gh, repo, PREFIX + a["source"], "Found by Pomodo's feeder")
-            args = ["issue", "create", "-R", repo, "--title", quiet(a["title"]), "--body-file", "-",
+            args = ["issue", "create", "-R", repo, f"--title={quiet(a['title'])}", "--body-file", "-",
                     "--label", PREFIX + a["source"]]
             if a.get("assign_owner"):
                 args += ["--assignee", "@me"]
             answer = gh(args, stdin=issue_body(a, plan["owner"])).strip()
             tail = answer.rsplit("/", 1)[-1]
-            number = int(tail) if tail.isdigit() else None
+            number = int(tail) if tail.isascii() and tail.isdigit() else None
             if number is None:  # the issue exists; remember the key so a rerun does not open it again
                 _remember(ledger, repo, a, None)
                 raise GhError(f"gh opened an issue for {a['key']} but did not say its number: {answer[:100]!r}")
@@ -194,7 +203,7 @@ def run(plan, gh, ledger, dry_run=False):
             what = f"{'commented on' if a['do'] == 'comment' else 'marked maybe done'} #{number}"
         _remember(ledger, repo, a, number)
         fed.add(a["key"])
-        lines.append(f"Done: {what} (from {SOURCES[a['source']]})")
+        say(f"Done: {what} (from {SOURCES[a['source']]})")
     return lines
 
 
@@ -204,12 +213,17 @@ def main(argv):
     if len(paths) != 1:
         print("usage: python3 -I feeder/feed.py plan.json [--dry-run]", file=sys.stderr)
         return 2
-    ledger = Path.home() / ".pomodo-feeder" / "ledger.jsonl"
+    state = Path.home() / ".pomodo-feeder"
     try:
         plan = check_plan(json.loads(Path(paths[0]).read_text()))
-        ledger.parent.mkdir(exist_ok=True)
-        for line in run(plan, gh_cli, ledger, dry_run=dry):
-            print(line)
+        try:
+            pinned = (state / "repo").read_text().strip()
+        except FileNotFoundError:
+            pinned = ""
+        if not pinned:
+            raise PlanError("set the team repo first: echo owner/name > ~/.pomodo-feeder/repo")
+        state.mkdir(exist_ok=True)
+        run(plan, gh_cli, state / "ledger.jsonl", pinned, dry_run=dry, on_line=print)
     except (PlanError, GhError) as e:
         print(f"Stopped: {e}", file=sys.stderr)
         return 1
