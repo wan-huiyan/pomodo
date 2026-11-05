@@ -17,9 +17,9 @@ SOURCES = {"slack": "Slack", "gmail": "Gmail", "calendar": "Calendar", "meeting"
 PREFIX = "from:"
 MAYBE_DONE = "maybe-done"
 MAX_CREATES, MAX_NOTES = 10, 20
-_REPO = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9._-]+$")
-_KEY = re.compile(r"^[a-z]+:[A-Za-z0-9._:/@#=-]{1,200}$")
-_LINK = re.compile(r"^https://[^\s<>\"']{1,500}$")
+_REPO = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9._-]+")  # used with fullmatch: `$` lets a final newline through
+_KEY = re.compile(r"[a-z]+:[A-Za-z0-9._:/@#=-]{1,200}")
+_LINK = re.compile(r"https://[^\s<>\"']{1,500}")
 _MARKER = re.compile(r"<!-- pomodo-source: (\S+) -->")
 _FIELDS = {"create": {"do", "source", "key", "link", "title", "plain", "assign_owner"},
            "comment": {"do", "source", "key", "link", "number", "text"},
@@ -39,7 +39,7 @@ def _text(action, field, limit, where):
 
 def check_plan(plan):
     """The plan, if every action is one the feeder may take. Raises PlanError otherwise; nothing is half-done."""
-    if not isinstance(plan, dict) or not _REPO.match(str(plan.get("repo", ""))):
+    if not isinstance(plan, dict) or not _REPO.fullmatch(str(plan.get("repo", ""))):
         raise PlanError("repo must be owner/name")
     if not isinstance(plan.get("owner"), str) or not plan["owner"].strip() or len(plan["owner"]) > 60:
         raise PlanError("owner must be the person's name, 1 to 60 characters")
@@ -49,19 +49,19 @@ def check_plan(plan):
     seen = set()
     for n, a in enumerate(actions, 1):
         where = f"action {n}"
-        if not isinstance(a, dict) or a.get("do") not in _FIELDS:
+        if not isinstance(a, dict) or not isinstance(a.get("do"), str) or a["do"] not in _FIELDS:
             raise PlanError(f"{where}: do must be one of {', '.join(_FIELDS)}")
         extra = set(a) - _FIELDS[a["do"]]
         if extra:
             raise PlanError(f"{where}: {', '.join(sorted(extra))} is not allowed for {a['do']}")
         if a.get("source") not in SOURCES:
             raise PlanError(f"{where}: source must be one of {', '.join(SOURCES)}")
-        if not isinstance(a.get("key"), str) or not _KEY.match(a["key"]) or not a["key"].startswith(a["source"] + ":"):
+        if not isinstance(a.get("key"), str) or not _KEY.fullmatch(a["key"]) or not a["key"].startswith(a["source"] + ":"):
             raise PlanError(f"{where}: key must look like {a['source']}:<id>, with no spaces")
         if a["key"] in seen:
             raise PlanError(f"{where}: key {a['key']} appears twice")
         seen.add(a["key"])
-        if not isinstance(a.get("link"), str) or not _LINK.match(a["link"]):
+        if not isinstance(a.get("link"), str) or not _LINK.fullmatch(a["link"]):
             raise PlanError(f"{where}: link must be one https:// address")
         if a["do"] == "create":
             _text(a, "title", 80, where)
@@ -81,8 +81,9 @@ def check_plan(plan):
 
 
 def quiet(text):
-    """Text as it goes into GitHub: an @name never pings anyone, and nothing can pose as a feeder marker."""
-    return text.replace("<!--", "").replace("-->", "").replace("@", "@⁠").strip()
+    """Text as it goes into GitHub: an @name never pings anyone, no HTML or comment (so no forged marker) gets through,
+    and a markdown image cannot make GitHub fetch an address that carries the text."""
+    return text.replace("<", "&lt;").replace(">", "&gt;").replace("![", "!\\[").replace("@", "@⁠").strip()
 
 
 def marker(key):
@@ -129,16 +130,29 @@ def _fed_keys(plan, gh, ledger):
                                 "--limit", "1000", "--json", "number,body"]) or "[]")
         for issue in listed:
             keys |= keys_in(issue.get("body"))
+    for number in sorted({a["number"] for a in plan["actions"] if a["do"] != "create"}):
+        seen = json.loads(gh(["issue", "view", str(number), "-R", repo, "--json", "comments"]) or "{}")
+        for comment in seen.get("comments", []):
+            keys |= keys_in(comment.get("body"))
     if ledger.exists():
-        for line in ledger.read_text().splitlines():
-            entry = json.loads(line)
-            if entry.get("repo") == repo:
-                keys.add(entry["key"])
+        for n, line in enumerate(ledger.read_text().splitlines(), 1):
+            try:
+                entry = json.loads(line)
+                if entry.get("repo") == repo:
+                    keys.add(entry["key"])
+            except (ValueError, AttributeError, KeyError):
+                raise PlanError(f"the ledger {ledger} is damaged at line {n}; fix or remove that line") from None
     return keys
 
 
 def _label(gh, repo, name, description):
     gh(["label", "create", name, "-R", repo, "--color", "c5def5", "--description", description, "--force"])
+
+
+def _remember(ledger, repo, a, number):
+    with ledger.open("a") as f:
+        f.write(json.dumps({"repo": repo, "key": a["key"], "do": a["do"], "number": number,
+                            "at": datetime.now(timezone.utc).isoformat()}) + "\n")
 
 
 def run(plan, gh, ledger, dry_run=False):
@@ -165,7 +179,12 @@ def run(plan, gh, ledger, dry_run=False):
                     "--label", PREFIX + a["source"]]
             if a.get("assign_owner"):
                 args += ["--assignee", "@me"]
-            number = int(gh(args, stdin=issue_body(a, plan["owner"])).strip().rsplit("/", 1)[-1])
+            answer = gh(args, stdin=issue_body(a, plan["owner"])).strip()
+            tail = answer.rsplit("/", 1)[-1]
+            number = int(tail) if tail.isdigit() else None
+            if number is None:  # the issue exists; remember the key so a rerun does not open it again
+                _remember(ledger, repo, a, None)
+                raise GhError(f"gh opened an issue for {a['key']} but did not say its number: {answer[:100]!r}")
             what = f"opened #{number} \"{a['title']}\""
         else:
             if a["do"] == "maybe_done":
@@ -173,9 +192,7 @@ def run(plan, gh, ledger, dry_run=False):
                 gh(["issue", "edit", str(number), "-R", repo, "--add-label", MAYBE_DONE])
             gh(["issue", "comment", str(number), "-R", repo, "--body-file", "-"], stdin=note_body(a))
             what = f"{'commented on' if a['do'] == 'comment' else 'marked maybe done'} #{number}"
-        with ledger.open("a") as f:
-            f.write(json.dumps({"repo": repo, "key": a["key"], "do": a["do"], "number": number,
-                                "at": datetime.now(timezone.utc).isoformat()}) + "\n")
+        _remember(ledger, repo, a, number)
         fed.add(a["key"])
         lines.append(f"Done: {what} (from {SOURCES[a['source']]})")
     return lines
@@ -188,12 +205,26 @@ def main(argv):
         print("usage: python3 -I feeder/feed.py plan.json [--dry-run]", file=sys.stderr)
         return 2
     ledger = Path.home() / ".pomodo-feeder" / "ledger.jsonl"
-    ledger.parent.mkdir(exist_ok=True)
     try:
-        for line in run(json.loads(Path(paths[0]).read_text()), gh_cli, ledger, dry_run=dry):
+        plan = check_plan(json.loads(Path(paths[0]).read_text()))
+        ledger.parent.mkdir(exist_ok=True)
+        for line in run(plan, gh_cli, ledger, dry_run=dry):
             print(line)
     except (PlanError, GhError) as e:
         print(f"Stopped: {e}", file=sys.stderr)
+        return 1
+    except ValueError as e:  # bad JSON, or a file that is not text
+        print(f"Stopped: the plan or a gh answer could not be read as JSON ({str(e)[:100]})", file=sys.stderr)
+        return 1
+    except subprocess.TimeoutExpired:
+        print("Stopped: gh took longer than 60 seconds; nothing after this point was done", file=sys.stderr)
+        return 1
+    except FileNotFoundError as e:
+        print(f"Stopped: {'gh is not installed or not on PATH' if e.filename in (None, 'gh') else f'no such file: {e.filename}'}",
+              file=sys.stderr)
+        return 1
+    except OSError as e:
+        print(f"Stopped: {e.strerror or e}", file=sys.stderr)
         return 1
     return 0
 
