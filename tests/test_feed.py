@@ -1,5 +1,6 @@
 import copy
 import json
+import tomllib
 
 import pytest
 
@@ -16,9 +17,22 @@ PLAN = {"repo": "acme/widgets", "owner": "Ada", "actions": [
 ]}
 
 
-def run(plan, gh, ledger, dry_run=False, **kw):
-    """feed.run with the team repo pinned to the test plans' repo."""
-    return feed.run(plan, gh, ledger, "acme/widgets", dry_run=dry_run, **kw)
+PROJECT_TOML = """
+repo = "acme/widgets"
+[slack]
+channels = ["C04ABC"]
+[jira]
+site = "acme.atlassian.net"
+projects = ["PROJ"]
+[gmail]
+domains = ["acme.com"]
+"""
+PROJECT = feed.parse_project(tomllib.loads(PROJECT_TOML), "feeder.toml")
+
+
+def run(plan, gh, ledger, dry_run=False, project=PROJECT, **kw):
+    """feed.run for the test project (acme/widgets: Slack C04ABC, Jira PROJ on acme.atlassian.net, Gmail)."""
+    return feed.run(plan, gh, ledger, project, dry_run=dry_run, **kw)
 
 
 def _with(i, **change):
@@ -293,21 +307,27 @@ def test_no_assignee_unless_assign_owner_is_true(tmp_path, change):
 
 
 class _Home:
-    """Points ~ at tmp_path and puts the plan in a file; returns main's exit code and stderr."""
+    """Points ~ at tmp_path, puts the plan in a file and the project file in board/feeder.toml; returns main's exit code
+    and stderr."""
 
     def __init__(self, tmp_path, monkeypatch, capsys):
         self.dir, self.capsys = tmp_path, capsys
         monkeypatch.setattr(feed.Path, "home", classmethod(lambda cls: tmp_path))
+        self.project_path = tmp_path / "board" / "feeder.toml"
+        self.project_path.parent.mkdir()
+        self.project_path.write_text(PROJECT_TOML)
 
     def pin(self, text="acme/widgets\n"):
+        """Write the person's allow-list, ~/.pomodo-feeder/repos."""
         self.state.mkdir(exist_ok=True)
-        (self.state / "repo").write_text(text)
+        (self.state / "repos").write_text(text)
 
-    def main(self, plan_text, *extra):
+    def main(self, plan_text, *extra, project=True):
         path = self.dir / "plan.json"
         if plan_text is not None:
             path.write_text(plan_text)
-        code = feed.main([str(path), *extra])
+        args = ["--project", str(self.project_path)] if project else []
+        code = feed.main([*args, str(path), *extra])
         out = self.capsys.readouterr()
         self.out = out.out
         return code, out.err
@@ -415,31 +435,195 @@ def test_a_number_made_of_superscript_digits_is_not_a_number(tmp_path):
 def test_a_plan_for_another_repo_is_refused_before_any_gh_call(tmp_path):
     gh = FakeGh()
     with pytest.raises(PlanError, match="acme/widgets.*other/private|other/private.*acme/widgets"):
-        feed.run({**PLAN, "repo": "other/private"}, gh, tmp_path / "l.jsonl", "acme/widgets")
+        run({**PLAN, "repo": "other/private"}, gh, tmp_path / "l.jsonl")
     assert gh.calls == []
 
 
-def test_the_pinned_repo_is_compared_ignoring_case(tmp_path):
+def test_the_project_repo_is_compared_ignoring_case(tmp_path):
     gh = FakeGh()
-    feed.run(copy.deepcopy(PLAN), gh, tmp_path / "l.jsonl", "ACME/Widgets")
+    run(copy.deepcopy(PLAN), gh, tmp_path / "l.jsonl", project=feed.parse_project(_project(repo="ACME/Widgets"), "f"))
     assert gh.writes()
 
 
-@pytest.mark.parametrize("text", [None, "", "\n  \n"])
-def test_main_without_the_pinned_repo_stops_and_says_how_to_set_it(home, monkeypatch, text):
+@pytest.mark.parametrize("text", [None, "", "\n  \n", "# only a comment\n", "other/private\n"])
+def test_main_with_the_repo_not_in_the_allow_list_stops_and_says_how_to_add_it(home, monkeypatch, text):
     if text is not None:
         home.pin(text)
     gh = FakeGh()
     monkeypatch.setattr(feed, "gh_cli", gh)
     code, err = home.main(json.dumps(PLAN))
     _stopped(code, err)
-    assert "set the team repo first: echo owner/name > ~/.pomodo-feeder/repo" in err
+    assert "mkdir -p ~/.pomodo-feeder && echo acme/widgets >> ~/.pomodo-feeder/repos" in err
     assert gh.calls == []
 
 
-def test_main_refuses_a_plan_for_a_repo_other_than_the_pinned_one(home, monkeypatch):
-    home.pin("other/private")
+def test_the_allow_list_ignores_comments_and_blank_lines_and_case(home, monkeypatch):
+    home.pin("# my projects\n\nother/one  # not this\n  ACME/Widgets \n")
+    monkeypatch.setattr(feed, "gh_cli", FakeGh())
+    code, err = home.main(json.dumps(PLAN))
+    assert code == 0 and err == ""
+
+
+def test_main_refuses_a_plan_for_a_repo_other_than_the_projects(home, monkeypatch):
+    home.pin("acme/widgets\nother/private\n")
     gh = FakeGh()
     monkeypatch.setattr(feed, "gh_cli", gh)
+    _stopped(*home.main(json.dumps({**PLAN, "repo": "other/private"})))
+    assert gh.calls == []
+
+
+def test_main_needs_project_and_prints_usage(home):
+    code, err = home.main(json.dumps(PLAN), project=False)
+    assert code == 2 and err.startswith("usage: python3 -I feeder/feed.py --project")
+
+
+def test_main_a_missing_project_file_stops_plainly(home, monkeypatch):
+    home.pin()
+    gh = FakeGh()
+    monkeypatch.setattr(feed, "gh_cli", gh)
+    home.project_path.unlink()
     _stopped(*home.main(json.dumps(PLAN)))
     assert gh.calls == []
+
+
+def test_main_a_bad_project_file_stops_naming_the_file_and_key(home, monkeypatch):
+    home.pin()
+    gh = FakeGh()
+    monkeypatch.setattr(feed, "gh_cli", gh)
+    home.project_path.write_text('repo = "acme/widgets"\n[slack]\nchannel = ["C1"]\n')
+    code, err = home.main(json.dumps(PLAN))
+    _stopped(code, err)
+    assert "feeder.toml" in err and "slack.channel" in err
+    assert gh.calls == []
+
+
+# --- the project file ---
+
+def _project(**change):
+    return {**tomllib.loads(PROJECT_TOML), **change}
+
+
+def test_a_good_project_file_loads():
+    p = feed.parse_project(_project(calendar={"title_words": ["Barry"]}, meeting={"title_words": ["Barry"]}), "feeder.toml")
+    assert p.repo == "acme/widgets" and p.tables["slack"]["channels"] == ["C04ABC"]
+    assert set(p.tables) == {"slack", "jira", "gmail", "calendar", "meeting"}
+    assert set(feed.parse_project({"repo": "a/b"}, "f").tables) == set()  # every table is optional
+
+
+@pytest.mark.parametrize("data, key", [
+    (_project(colour="red"), "colour"),
+    (_project(sms={"numbers": ["1"]}), "sms"),
+    (_project(slack={"channels": ["C1"], "extra": 1}), "slack.extra"),
+    ({k: v for k, v in _project().items() if k != "repo"}, "repo"),
+    (_project(repo="not a repo"), "repo"),
+    (_project(repo="acme/widgets\n"), "repo"),
+    (_project(slack={"channels": "C1"}), "slack.channels"),
+    (_project(slack={"channels": ["C1", ""]}), "slack.channels"),
+    (_project(slack={}), "slack.channels"),
+    (_project(jira={"site": "acme.atlassian.net", "projects": [1]}), "jira.projects"),
+    (_project(gmail={"domains": [" "]}), "gmail.domains"),
+    (_project(calendar={"title_words": "Barry"}), "calendar.title_words"),
+    (_project(meeting={"title_words": [None]}), "meeting.title_words"),
+    (_project(jira={"site": "https://acme.atlassian.net", "projects": ["P"]}), "jira.site"),
+    (_project(jira={"site": "acme.atlassian.net/browse", "projects": ["P"]}), "jira.site"),
+    (_project(jira={"site": "", "projects": ["P"]}), "jira.site"),
+    (_project(jira={"projects": ["P"]}), "jira.site"),
+    (_project(slack="C1"), "slack"),
+])
+def test_a_bad_project_file_is_refused_naming_the_key(data, key):
+    with pytest.raises(PlanError, match=rf"feeder\.toml: .*{key}"):
+        feed.parse_project(data, "feeder.toml")
+
+
+def test_load_project_reads_toml_and_names_a_broken_file(tmp_path):
+    good = tmp_path / "feeder.toml"
+    good.write_text(PROJECT_TOML)
+    assert feed.load_project(good).repo == "acme/widgets"
+    good.write_text("repo = ")
+    with pytest.raises(PlanError, match="feeder.toml.*not valid TOML"):
+        feed.load_project(good)
+
+
+# --- the plan must stay inside the project's sources ---
+
+def _refused(tmp_path, action, match, project=PROJECT):
+    gh = FakeGh()
+    with pytest.raises(PlanError, match=match):
+        run({**PLAN, "actions": [action]}, gh, tmp_path / "l.jsonl", project=project)
+    assert gh.calls == []
+
+
+def test_a_source_with_no_table_is_off(tmp_path):
+    cal = {"do": "comment", "number": 3, "source": "calendar", "key": "calendar:ev1", "text": "Prep.",
+           "link": "https://calendar.google.com/e/1"}
+    _refused(tmp_path, cal, r"action 1.*feeder\.toml.*calendar")
+    meet = {**cal, "source": "meeting", "key": "meeting:doc/1"}
+    _refused(tmp_path, meet, r"action 1.*meeting")
+    only_repo = feed.parse_project({"repo": "acme/widgets"}, "feeder.toml")
+    _refused(tmp_path, PLAN["actions"][0], r"action 1.*slack", project=only_repo)
+
+
+def test_gmail_calendar_and_meeting_are_accepted_when_the_table_exists(tmp_path):
+    project = feed.parse_project(_project(calendar={"title_words": ["W"]}, meeting={"title_words": ["W"]}), "f")
+    cal = {"do": "comment", "number": 3, "source": "calendar", "key": "calendar:ev1", "text": "Prep.",
+           "link": "https://calendar.google.com/e/1"}
+    meet = {**cal, "source": "meeting", "key": "meeting:doc/1"}
+    gh = FakeGh()
+    run({**PLAN, "actions": [cal, meet, PLAN["actions"][1]]}, gh, tmp_path / "l.jsonl", project=project)
+    assert len(gh.writes()) == 3
+
+
+@pytest.mark.parametrize("key", ["slack:C99999/1730800000.1", "slack:C04ABC9/1.2", "slack:c04abc/1.2"])
+def test_a_slack_channel_not_listed_is_refused(tmp_path, key):
+    _refused(tmp_path, {**PLAN["actions"][0], "key": key}, r"action 1.*channel.*feeder\.toml")
+
+
+@pytest.mark.parametrize("key", ["slack:C04ABC", "slack:/1.2"])
+def test_a_slack_key_without_a_listed_channel_and_ts_is_refused(tmp_path, key):
+    _refused(tmp_path, {**PLAN["actions"][0], "key": key}, r"action 1.*slack:<channel>/<ts>|action 1.*channel")
+
+
+@pytest.mark.parametrize("key", ["jira:OTHER-5:Done", "jira:PROJ5-5:Done", "jira:PROJ:Done", "jira:PROJ-5", "jira:PROJ-x:Done"])
+def test_a_jira_key_outside_the_listed_projects_is_refused(tmp_path, key):
+    _refused(tmp_path, {**PLAN["actions"][2], "key": key}, r"action 1.*jira")
+
+
+@pytest.mark.parametrize("link", ["https://evil.example/browse/PROJ-88", "https://acme.atlassian.net.evil.example/browse/PROJ-88",
+                                  "https://acme.atlassian.net:8443/browse/PROJ-88", "https://sub.acme.atlassian.net/x"])
+def test_a_jira_link_on_another_host_is_refused(tmp_path, link):
+    _refused(tmp_path, {**PLAN["actions"][2], "link": link}, r"action 1.*host.*acme\.atlassian\.net")
+
+
+@pytest.mark.parametrize("link", ["https://acme.slack.com/archives/C99999/p1", "https://acme.slack.com/archives/C04ABC9/p1",
+                                  "https://acme.slack.com/x?c=C04ABC"])
+def test_a_slack_link_to_another_channel_is_refused(tmp_path, link):
+    _refused(tmp_path, {**PLAN["actions"][0], "link": link}, r"action 1.*link.*C04ABC")
+
+
+@pytest.mark.parametrize("link", ["https://acme.slack.com/archives/C04ABC/p1", "https://app.slack.com/client/T1/C04ABC"])
+def test_a_slack_link_naming_the_keys_channel_passes(tmp_path, link):
+    gh = FakeGh()
+    run({**PLAN, "actions": [{**PLAN["actions"][0], "link": link}]}, gh, tmp_path / "l.jsonl")
+    assert gh.writes()
+
+
+@pytest.mark.parametrize("link", ["https://acme.atlassian.net/browse/PROJ-10", "https://acme.atlassian.net/browse/PROJ-8",
+                                  "https://acme.atlassian.net/browse/PROJ-880", "https://acme.atlassian.net/x/PROJ-88",
+                                  "https://acme.atlassian.net/browse/OTHER-88"])
+def test_a_jira_link_to_another_issue_is_refused(tmp_path, link):
+    _refused(tmp_path, {**PLAN["actions"][2], "link": link}, r"action 1.*link.*/browse/PROJ-88")
+
+
+@pytest.mark.parametrize("link", ["https://acme.atlassian.net/browse/PROJ-88", "https://acme.atlassian.net/browse/PROJ-88?x=1",
+                                  "https://acme.atlassian.net/browse/PROJ-88/"])
+def test_a_jira_link_to_the_keys_issue_passes(tmp_path, link):
+    gh = FakeGh()
+    run({**PLAN, "actions": [{**PLAN["actions"][2], "link": link}]}, gh, tmp_path / "l.jsonl")
+    assert gh.writes()
+
+
+def test_the_jira_host_is_compared_ignoring_case(tmp_path):
+    gh = FakeGh()
+    link = "https://ACME.atlassian.net/browse/PROJ-88"
+    run({**PLAN, "actions": [{**PLAN["actions"][2], "link": link}]}, gh, tmp_path / "l.jsonl")
+    assert gh.writes()
