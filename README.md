@@ -382,7 +382,29 @@ Some to-dos never start on GitHub: a favour asked in Slack, an email you owe a r
 - **It only adds.** It never closes, reassigns or edits an issue that is already there.
 - **It refuses public repos.** The to-dos it finds can quote private messages, so it will not open issues on a repo that anyone can read.
 
-The setup steps are in two files: `feeder/routine-prompt.md` has the scheduled task (the blanks to fill in and the schedule) and the one-time step of naming the team repo, and `feeder/SKILL.md` has the rules the task follows. The feeder always writes `from:` labels, so if you use it, leave `[labels] source_prefix` as `from:`.
+**It runs once per project, and only on that project's own sources.** Pomodo is a template; each project (client) has its own repo. Each project repo carries a committed settings file, `board/feeder.toml`, next to `board/pomodo.toml`. It names the repo and lists that project's Slack channels, Jira projects and host, mail sender domains, and calendar and meeting-note title words. A source with no table in the file is off. Here is an example:
+
+```toml
+repo = "MightyHive/barryu-tracker"      # required
+
+[slack]
+channels = ["C04ABC123"]                # only messages from these channels
+[jira]
+site = "emea-monks.atlassian.net"       # Jira links must be on this host
+projects = ["BU"]                       # ticket keys must start with BU-
+[gmail]
+domains = ["barry.edu"]                 # mail from these senders belongs to this project
+[calendar]
+title_words = ["Barry"]
+[meeting]
+title_words = ["Barry"]
+```
+
+You also keep a personal list of the repos you trust, `~/.pomodo-feeder/repos`, one `owner/name` per line. The feeder refuses a project file whose repo is not on your list, so a settings file in a repo you do not trust cannot send mail summaries anywhere new. Because each run belongs to one project, mail and chat from one client can never land in another client's repo. The feeder checks the Slack channel, the Jira project and the Jira host itself; the scheduled task applies the Gmail domains and the calendar and meeting title words, since the feeder cannot see them.
+
+Run it with `python3 -I feeder/feed.py --project board/feeder.toml plan.json`, once per project.
+
+The setup steps are in two files: `feeder/routine-prompt.md` has the scheduled task (the blanks to fill in and the schedule, one task per project) and the one-time steps, and `feeder/SKILL.md` has the rules the task follows. The feeder always writes `from:` labels, so if you use it, leave `[labels] source_prefix` as `from:`.
 
 The guards only bind writes made through `feeder/feed.py`. When you create the scheduled task, do not give it any other way to change GitHub.
 
